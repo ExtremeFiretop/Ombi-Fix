@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net.Http;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -87,6 +87,17 @@ namespace Ombi.Api.External.ExternalApis.Sonarr
             request.AddHeader("X-Api-Key", apiKey);
             request.AddJsonBody(updated);
             return await Api.Request<SonarrSeries>(request);
+        }
+
+        public async Task<bool> DeleteSeries(int id, string apiKey, string baseUrl, bool deleteFiles, bool addImportListExclusion)
+        {
+            var request = new Request(
+                $"{ApiBaseUrl}series/{id}?deleteFiles={deleteFiles.ToString().ToLowerInvariant()}&addImportListExclusion={addImportListExclusion.ToString().ToLowerInvariant()}",
+                baseUrl,
+                HttpMethod.Delete);
+            request.AddHeader("X-Api-Key", apiKey);
+            await Api.RequestContent(request);
+            return true;
         }
 
         public async Task<NewSeries> AddSeries(NewSeries seriesToAdd, string apiKey, string baseUrl)

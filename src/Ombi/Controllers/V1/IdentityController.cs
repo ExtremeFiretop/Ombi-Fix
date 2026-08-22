@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -226,6 +226,10 @@ namespace Ombi.Controllers.V1
             await CreateRole(OmbiRoles.EditCustomPage);
             await CreateRole(OmbiRoles.Request4KMovie);
             await CreateRole(OmbiRoles.AutoApprove4KMovie);
+            await CreateRole(OmbiRoles.RequestMediaRemoval);
+            await CreateRole(OmbiRoles.DeleteOwnMedia);
+            await CreateRole(OmbiRoles.VoteOnMediaCleanup);
+            await CreateRole(OmbiRoles.ManageMediaCleanup);
         }
 
         private async Task CreateRole(string role)
@@ -749,6 +753,13 @@ namespace Ombi.Controllers.V1
         [PowerUser]
         public async Task<IEnumerable<ClaimCheckboxes>> GetAllClaims()
         {
+            // Upgraded installations do not run the first-run CreateRoles path, so ensure
+            // media-cleanup roles exist before returning the assignable role list.
+            await CreateRole(OmbiRoles.RequestMediaRemoval);
+            await CreateRole(OmbiRoles.DeleteOwnMedia);
+            await CreateRole(OmbiRoles.VoteOnMediaCleanup);
+            await CreateRole(OmbiRoles.ManageMediaCleanup);
+
             var claims = new List<ClaimCheckboxes>();
             // Add the missing claims
             var allRoles = await RoleManager.Roles.ToListAsync();

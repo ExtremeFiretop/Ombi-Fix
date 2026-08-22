@@ -112,6 +112,7 @@ namespace Ombi.DependencyInjection
             services.AddTransient<IPlexOAuthManager, PlexOAuthManager>();
             services.AddTransient<IPlexTokenKeepAliveService, PlexTokenKeepAliveService>();
             services.AddTransient<IVoteEngine, VoteEngine>();
+            services.AddTransient<IMediaCleanupEngine, MediaCleanupEngine>();
             services.AddTransient<IDemoMovieSearchEngine, DemoMovieSearchEngine>();
             services.AddTransient<IDemoTvSearchEngine, DemoTvSearchEngine>();
             services.AddTransient<IUserDeletionEngine, UserDeletionEngine>();
@@ -296,6 +297,7 @@ namespace Ombi.DependencyInjection
             services.AddTransient<IMediaDatabaseRefresh, MediaDatabaseRefresh>();
             services.AddTransient<IArrAvailabilityChecker, ArrAvailabilityChecker>();
             services.AddTransient<IAutoDeleteRequests, AutoDeleteRequests>();
+            services.AddTransient<IMediaCleanupJob, MediaCleanupJob>();
         }
 
         public static void RegisterHubs(this IServiceCollection services)

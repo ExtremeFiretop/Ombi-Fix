@@ -1,0 +1,101 @@
+using System;
+using System.Collections.Generic;
+using Ombi.Store.Entities;
+
+namespace Ombi.Settings.Settings.Models
+{
+    public class MediaCleanupSettings : Settings
+    {
+        public OwnRequestRemovalMode OwnRequestRemoval { get; set; } = OwnRequestRemovalMode.Off;
+        public CommunityCleanupMode CommunityCleanup { get; set; } = CommunityCleanupMode.Off;
+
+        public int MinimumDeleteVotes { get; set; } = 3;
+        public int RequiredVoteMargin { get; set; } = 1;
+        public int VotingPeriodDays { get; set; } = 7;
+        public int GracePeriodDays { get; set; } = 3;
+        public int MinimumMediaAgeDays { get; set; } = 30;
+        public bool RequesterCanVeto { get; set; } = true;
+        public bool DeleteFiles { get; set; } = true;
+        public bool AddImportExclusion { get; set; }
+
+        public bool Enabled => OwnRequestRemoval != OwnRequestRemovalMode.Off || CommunityCleanup != CommunityCleanupMode.Off;
+    }
+
+    public enum OwnRequestRemovalMode
+    {
+        Off = 0,
+        RequestRemoval = 1,
+        ImmediateDeletion = 2
+    }
+
+    public enum CommunityCleanupMode
+    {
+        Off = 0,
+        AdminApproval = 1,
+        AutomaticAfterThreshold = 2
+    }
+
+    public enum MediaCleanupStatus
+    {
+        Voting = 0,
+        PendingAdminApproval = 1,
+        ScheduledForDeletion = 2,
+        Completed = 3,
+        Rejected = 4,
+        Failed = 5,
+        Cancelled = 6
+    }
+
+    public enum MediaCleanupOrigin
+    {
+        OwnRequest = 0,
+        Community = 1
+    }
+
+    public enum MediaCleanupVoteType
+    {
+        Keep = 0,
+        Delete = 1
+    }
+
+    /// <summary>
+    /// Persistent cleanup workflow state. This intentionally lives in the settings store so the
+    /// feature can be applied to existing Ombi installations without a provider-specific schema
+    /// migration. A future upstream implementation can move these records to first-class tables.
+    /// </summary>
+    public class MediaCleanupState : Settings
+    {
+        public List<MediaCleanupRecord> Requests { get; set; } = new List<MediaCleanupRecord>();
+    }
+
+    public class MediaCleanupRecord
+    {
+        public string Id { get; set; }
+        public RequestType RequestType { get; set; }
+        public int MediaRequestId { get; set; }
+        public string Title { get; set; }
+        public string PosterPath { get; set; }
+        public int TheMovieDbId { get; set; }
+        public int TvDbId { get; set; }
+        public DateTime? AvailableSince { get; set; }
+        public long SizeOnDisk { get; set; }
+        public string RequestedByUserId { get; set; }
+        public List<string> OwnerUserIds { get; set; } = new List<string>();
+        public MediaCleanupOrigin Origin { get; set; }
+        public MediaCleanupStatus Status { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? VotingEndsAt { get; set; }
+        public DateTime? ScheduledForDeletionAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public string ApprovedByUserId { get; set; }
+        public string FailureReason { get; set; }
+        public List<MediaCleanupVoteRecord> Votes { get; set; } = new List<MediaCleanupVoteRecord>();
+    }
+
+    public class MediaCleanupVoteRecord
+    {
+        public string UserId { get; set; }
+        public MediaCleanupVoteType Vote { get; set; }
+        public DateTime Date { get; set; }
+    }
+}

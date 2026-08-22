@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -70,6 +70,17 @@ namespace Ombi.Api.External.ExternalApis.Radarr
             request.AddJsonBody(movie);
 
             return await Api.Request<MovieResponse>(request);
+        }
+
+        public async Task<bool> DeleteMovie(int id, string apiKey, string baseUrl, bool deleteFiles, bool addImportExclusion)
+        {
+            var request = new Request(
+                $"/api/v3/movie/{id}?deleteFiles={deleteFiles.ToString().ToLowerInvariant()}&addImportExclusion={addImportExclusion.ToString().ToLowerInvariant()}",
+                baseUrl,
+                HttpMethod.Delete);
+            AddHeaders(request, apiKey);
+            await Api.RequestContent(request);
+            return true;
         }
 
         public async Task<RadarrAddMovie> AddMovie(int tmdbId, string title, int year, int qualityId, string rootPath, string apiKey, string baseUrl, bool searchNow, string minimumAvailability, List<int> tags)

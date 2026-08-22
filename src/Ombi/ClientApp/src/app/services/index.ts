@@ -23,3 +23,4 @@ export * from "./hub.service";
 export * from "./system.service";
 export * from "./filedownload.service";
 export * from "./settingsState.service";
+export * from "./media-cleanup.service";

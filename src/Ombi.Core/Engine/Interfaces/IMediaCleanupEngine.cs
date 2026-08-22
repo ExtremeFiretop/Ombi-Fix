@@ -1,0 +1,19 @@
+using System.Threading.Tasks;
+using Ombi.Core.Models.MediaCleanup;
+using Ombi.Settings.Settings.Models;
+using Ombi.Store.Entities;
+
+namespace Ombi.Core.Engine.Interfaces
+{
+    public interface IMediaCleanupEngine
+    {
+        Task<MediaCleanupOverview> GetOverview();
+        Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId);
+        Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId);
+        Task<MediaCleanupActionResult> Vote(string cleanupRequestId, MediaCleanupVoteType vote);
+        Task<MediaCleanupActionResult> Approve(string cleanupRequestId);
+        Task<MediaCleanupActionResult> Reject(string cleanupRequestId);
+        Task<MediaCleanupActionResult> Cancel(string cleanupRequestId);
+        Task ProcessPending();
+    }
+}

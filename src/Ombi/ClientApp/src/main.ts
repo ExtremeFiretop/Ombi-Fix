@@ -83,6 +83,7 @@ import { RequestService } from "./app/services";
 import { SonarrService } from "./app/services";
 import { LidarrService } from "./app/services";
 import { SignalRNotificationService } from "./app/services/signlarnotification.service";
+import { MediaCleanupService } from "./app/services";
 
 // State
 import { CustomizationState } from "./app/state/customization/customization.state";
@@ -208,6 +209,7 @@ bootstrapApplication(AppComponent, {
         SonarrService,
         LidarrService,
         SignalRNotificationService,
+        MediaCleanupService,
         FEATURES_INITIALIZER,
         SONARR_INITIALIZER,
         CUSTOMIZATION_INITIALIZER,

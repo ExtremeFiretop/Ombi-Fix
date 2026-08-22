@@ -1,4 +1,4 @@
-﻿namespace Ombi.Helpers
+namespace Ombi.Helpers
 {
     public static class OmbiRoles
     {
@@ -18,5 +18,9 @@
         public const string EditCustomPage = nameof(EditCustomPage);
         public const string Request4KMovie = nameof(Request4KMovie);
         public const string AutoApprove4KMovie = nameof(AutoApprove4KMovie);
+        public const string RequestMediaRemoval = nameof(RequestMediaRemoval);
+        public const string DeleteOwnMedia = nameof(DeleteOwnMedia);
+        public const string VoteOnMediaCleanup = nameof(VoteOnMediaCleanup);
+        public const string ManageMediaCleanup = nameof(ManageMediaCleanup);
     }
 }

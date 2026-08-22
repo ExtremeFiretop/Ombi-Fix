@@ -14,6 +14,7 @@ function createComponent() {
       plexRecentlyAddedSync: '0 0 * * *', lidarrArtistSync: '0 0 * * *',
       issuesPurge: '0 0 * * *', retryRequests: '0 0 * * *',
       mediaDatabaseRefresh: '0 0 * * *', autoDeleteRequests: '0 0 * * *',
+      mediaCleanup: '0 0 * * *',
       embyRecentlyAddedSync: '0 0 * * *', plexWatchlistImport: '0 0 * * *',
     })),
     saveJobSettings: vi.fn().mockReturnValue(of({ result: true })),
@@ -33,6 +34,7 @@ describe('JobsComponent', () => {
     comp.ngOnInit();
     expect(comp.form).toBeDefined();
     expect(comp.form.controls['automaticUpdater'].value).toBe('0 0 * * *');
+    expect(comp.form.controls['mediaCleanup'].value).toBe('0 0 * * *');
   });
 
   it('should save and notify success', () => {

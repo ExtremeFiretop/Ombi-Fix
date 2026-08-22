@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ombi.Api.External.ExternalApis.Radarr.Models;
@@ -14,6 +14,7 @@ namespace Ombi.Api.External.ExternalApis.Radarr
         Task<SystemStatus> SystemStatus(string apiKey, string baseUrl);
         Task<MovieResponse> GetMovie(int id, string apiKey, string baseUrl);
         Task<MovieResponse> UpdateMovie(MovieResponse movie, string apiKey, string baseUrl);
+        Task<bool> DeleteMovie(int id, string apiKey, string baseUrl, bool deleteFiles, bool addImportExclusion);
         Task<bool> MovieSearch(int[] movieIds, string apiKey, string baseUrl);
         Task<RadarrAddMovie> AddMovie(int tmdbId, string title, int year, int qualityId, string rootPath,string apiKey, string baseUrl, bool searchNow, string minimumAvailability, List<int> tags);
         Task<List<Tag>> GetTags(string apiKey, string baseUrl);

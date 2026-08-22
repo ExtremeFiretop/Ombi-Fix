@@ -1,0 +1,36 @@
+.settings-section {
+    margin: 1.25rem 0 1.75rem;
+}
+
+.settings-section h3 {
+    margin-bottom: .7rem;
+}
+
+.full-width {
+    width: 100%;
+    max-width: 520px;
+}
+
+.number-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: .75rem 1rem;
+    max-width: 760px;
+    margin-top: 1rem;
+}
+
+.help-text,
+.lead-copy {
+    max-width: 850px;
+    opacity: .78;
+}
+
+.danger-zone {
+    border-top: 1px solid rgba(127, 127, 127, .25);
+    padding-top: 1rem;
+}
+
+.danger-zone mat-slide-toggle {
+    display: block;
+    margin-top: .8rem;
+}

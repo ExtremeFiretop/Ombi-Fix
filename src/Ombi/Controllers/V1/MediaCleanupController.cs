@@ -1,0 +1,66 @@
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Ombi.Core.Engine.Interfaces;
+using Ombi.Core.Models.MediaCleanup;
+using Ombi.Settings.Settings.Models;
+using Ombi.Store.Entities;
+
+namespace Ombi.Controllers.V1
+{
+    [Authorize]
+    [ApiV1]
+    [Produces("application/json")]
+    [ApiController]
+    public class MediaCleanupController : ControllerBase
+    {
+        private readonly IMediaCleanupEngine _engine;
+
+        public MediaCleanupController(IMediaCleanupEngine engine)
+        {
+            _engine = engine;
+        }
+
+        [HttpGet]
+        public Task<MediaCleanupOverview> GetOverview()
+        {
+            return _engine.GetOverview();
+        }
+
+        [HttpPost("own/{requestType}/{requestId:int}")]
+        public Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId)
+        {
+            return _engine.RequestOwnRemoval(requestType, requestId);
+        }
+
+        [HttpPost("nominate/{requestType}/{requestId:int}")]
+        public Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId)
+        {
+            return _engine.Nominate(requestType, requestId);
+        }
+
+        [HttpPost("vote/{cleanupRequestId}/{vote}")]
+        public Task<MediaCleanupActionResult> Vote(string cleanupRequestId, MediaCleanupVoteType vote)
+        {
+            return _engine.Vote(cleanupRequestId, vote);
+        }
+
+        [HttpPost("approve/{cleanupRequestId}")]
+        public Task<MediaCleanupActionResult> Approve(string cleanupRequestId)
+        {
+            return _engine.Approve(cleanupRequestId);
+        }
+
+        [HttpPost("reject/{cleanupRequestId}")]
+        public Task<MediaCleanupActionResult> Reject(string cleanupRequestId)
+        {
+            return _engine.Reject(cleanupRequestId);
+        }
+
+        [HttpPost("cancel/{cleanupRequestId}")]
+        public Task<MediaCleanupActionResult> Cancel(string cleanupRequestId)
+        {
+            return _engine.Cancel(cleanupRequestId);
+        }
+    }
+}

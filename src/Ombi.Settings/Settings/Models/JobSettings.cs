@@ -20,5 +20,6 @@
         public string MediaDatabaseRefresh { get; set; }
         public string AutoDeleteRequests { get; set; }
         public string PlexWatchlistImport { get; set; }
+        public string MediaCleanup { get; set; }
     }
 }

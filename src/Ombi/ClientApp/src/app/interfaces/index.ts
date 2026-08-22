@@ -22,3 +22,5 @@ export * from "./IFailedRequests";
 export * from "./IHub";
 export * from "./ITester";
 export * from "./IRecentlyRequested";
+
+export * from "./IMediaCleanup";

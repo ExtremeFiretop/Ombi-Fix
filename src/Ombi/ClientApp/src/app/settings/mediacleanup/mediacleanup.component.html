@@ -1,0 +1,85 @@
+<div class="small-middle-container">
+    <fieldset>
+        <legend>Media Cleanup</legend>
+
+        <form *ngIf="form" novalidate [formGroup]="form" (ngSubmit)="onSubmit(form)">
+            <p class="lead-copy">Media Cleanup has two independent systems. User permissions still apply in addition to these server-wide settings.</p>
+
+            <section class="settings-section">
+                <h3>Allow users to remove their own requests</h3>
+                <mat-form-field appearance="fill" class="full-width">
+                    <mat-label>Own request removal</mat-label>
+                    <mat-select formControlName="ownRequestRemoval">
+                        <mat-option [value]="OwnRequestRemovalMode.Off">Off</mat-option>
+                        <mat-option [value]="OwnRequestRemovalMode.RequestRemoval">Request removal</mat-option>
+                        <mat-option [value]="OwnRequestRemovalMode.ImmediateDeletion">Immediate deletion</mat-option>
+                    </mat-select>
+                </mat-form-field>
+                <p class="help-text">
+                    Request removal sends the item to a cleanup manager for approval. Immediate deletion lets appropriately-permitted users remove only media they originally requested.
+                    A TV series counts as an own request only when all Ombi child requests for that series belong to the same user.
+                </p>
+            </section>
+
+            <section class="settings-section">
+                <h3>Community cleanup voting</h3>
+                <mat-form-field appearance="fill" class="full-width">
+                    <mat-label>Community cleanup</mat-label>
+                    <mat-select formControlName="communityCleanup">
+                        <mat-option [value]="CommunityCleanupMode.Off">Off</mat-option>
+                        <mat-option [value]="CommunityCleanupMode.AdminApproval">Admin approval</mat-option>
+                        <mat-option [value]="CommunityCleanupMode.AutomaticAfterThreshold">Automatic after threshold</mat-option>
+                    </mat-select>
+                </mat-form-field>
+                <p class="help-text">
+                    Admin approval turns a successful vote into a review item. Automatic mode schedules removal as soon as the threshold is met, then waits for the grace period before deleting.
+                </p>
+
+                <div class="number-grid" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
+                    <mat-form-field appearance="fill">
+                        <mat-label>Minimum delete votes</mat-label>
+                        <input matInput type="number" min="1" formControlName="minimumDeleteVotes" />
+                    </mat-form-field>
+                    <mat-form-field appearance="fill">
+                        <mat-label>Required vote margin</mat-label>
+                        <input matInput type="number" min="0" formControlName="requiredVoteMargin" />
+                    </mat-form-field>
+                    <mat-form-field appearance="fill">
+                        <mat-label>Voting period (days)</mat-label>
+                        <input matInput type="number" min="1" formControlName="votingPeriodDays" />
+                    </mat-form-field>
+                    <mat-form-field appearance="fill">
+                        <mat-label>Grace period (days)</mat-label>
+                        <input matInput type="number" min="0" formControlName="gracePeriodDays" />
+                    </mat-form-field>
+                    <mat-form-field appearance="fill">
+                        <mat-label>Minimum media age (days)</mat-label>
+                        <input matInput type="number" min="0" formControlName="minimumMediaAgeDays" />
+                    </mat-form-field>
+                </div>
+
+                <mat-slide-toggle formControlName="requesterCanVeto" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
+                    Original requester can veto with a Keep vote
+                </mat-slide-toggle>
+            </section>
+
+            <section class="settings-section danger-zone">
+                <h3>Deletion behavior</h3>
+                <mat-slide-toggle formControlName="deleteFiles">Delete media files in Radarr/Sonarr</mat-slide-toggle>
+                <p class="help-text"><strong>Warning:</strong> enabling this makes a completed cleanup destructive. Radarr/Sonarr will be asked to permanently delete the files.</p>
+
+                <mat-slide-toggle formControlName="addImportExclusion">Add import exclusion after deletion</mat-slide-toggle>
+                <p class="help-text">Prevents the deleted movie/series from being immediately re-imported by the *arr application. Ombi removes its request record after successful cleanup, so users can submit a new Ombi request later.</p>
+            </section>
+
+            <section class="settings-section">
+                <h3>Required roles</h3>
+                <p class="help-text">
+                    Assign <code>RequestMediaRemoval</code>, <code>DeleteOwnMedia</code>, <code>VoteOnMediaCleanup</code>, and/or <code>ManageMediaCleanup</code> under User Management as appropriate. Admin and PowerUser accounts are treated as cleanup managers.
+                </p>
+            </section>
+
+            <button mat-raised-button color="primary" type="submit" [disabled]="form.invalid">Save</button>
+        </form>
+    </fieldset>
+</div>

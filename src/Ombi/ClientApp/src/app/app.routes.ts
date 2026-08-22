@@ -9,6 +9,7 @@ import { LandingPageComponent } from "./landingpage/landingpage.component";
 import { CookieComponent } from "./auth/cookie.component";
 import { DiscoverComponent } from "./discover/components/discover/discover.component";
 import { VoteComponent } from "./vote/vote.component";
+import { MediaCleanupComponent } from "./media-cleanup/media-cleanup.component";
 import { SettingsComponent } from "./settings/settings.component";
 import { MovieDetailsComponent } from "./media-details/components/movie/movie-details.component";
 import { TvDetailsComponent } from "./media-details/components/tv/tv-details.component";
@@ -35,6 +36,7 @@ import { AuthenticationComponent } from "./settings/authentication/authenticatio
 import { MassEmailComponent } from "./settings/massemail/massemail.component";
 import { LidarrComponent } from "./settings/lidarr/lidarr.component";
 import { VoteComponent as SettingsVoteComponent } from "./settings/vote/vote.component";
+import { MediaCleanupSettingsComponent } from "./settings/mediacleanup/mediacleanup.component";
 import { TheMovieDbComponent } from "./settings/themoviedb/themoviedb.component";
 import { FailedRequestsComponent } from "./settings/failedrequests/failedrequests.component";
 import { LogsComponent } from "./settings/logs/logs.component";
@@ -89,6 +91,7 @@ export const routes: Routes = [
     { path: "discover/:searchTerm", component: DiscoverSearchResultsComponent },
     { path: "discover/advanced/search", component: DiscoverSearchResultsComponent },
     { path: "vote", component: VoteComponent },
+    { path: "cleanup", component: MediaCleanupComponent, canActivate: [AuthGuard] },
     { 
         path: "issues", 
         children: [
@@ -131,6 +134,7 @@ export const routes: Routes = [
             { path: "MassEmail", component: MassEmailComponent },
             { path: "Lidarr", component: LidarrComponent },
             { path: "Vote", component: SettingsVoteComponent },
+            { path: "MediaCleanup", component: MediaCleanupSettingsComponent },
             { path: "TheMovieDb", component: TheMovieDbComponent },
             { path: "FailedRequests", component: FailedRequestsComponent },
             { path: "Logs", component: LogsComponent },

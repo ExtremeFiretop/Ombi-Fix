@@ -227,6 +227,7 @@ export interface IJobSettings {
   retryRequests: string;
   mediaDatabaseRefresh: string;
   autoDeleteRequests: string;
+  mediaCleanup: string;
   embyRecentlyAddedSync: string;
   plexWatchlistImport: string;
 }

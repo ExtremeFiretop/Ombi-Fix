@@ -41,6 +41,7 @@ import {
     ITwilioSettings,
     IWebhookNotificationSettings,
     IRadarrCombined,
+    IMediaCleanupSettings,
 } from "../interfaces";
 
 import { ServiceHelpers } from "./service.helpers";
@@ -338,6 +339,18 @@ export class SettingsService extends ServiceHelpers {
 
     public saveVoteSettings(settings: IVoteSettings): Observable<boolean> {
         return this.http.post<boolean>(`${this.url}/vote`, JSON.stringify(settings), {headers: this.headers});
+    }
+
+    public getMediaCleanupSettings(): Observable<IMediaCleanupSettings> {
+        return this.http.get<IMediaCleanupSettings>(`${this.url}/mediacleanup`, {headers: this.headers});
+    }
+
+    public mediaCleanupEnabled(): Observable<boolean> {
+        return this.http.get<boolean>(`${this.url}/mediacleanupenabled`, {headers: this.headers});
+    }
+
+    public saveMediaCleanupSettings(settings: IMediaCleanupSettings): Observable<boolean> {
+        return this.http.post<boolean>(`${this.url}/mediacleanup`, JSON.stringify(settings), {headers: this.headers});
     }
 
     public getTheMovieDbSettings(): Observable<ITheMovieDbSettings> {

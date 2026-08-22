@@ -1,0 +1,125 @@
+<div class="cleanup-page">
+    <div class="cleanup-header">
+        <div>
+            <h1>Media Cleanup</h1>
+            <p>Remove media you requested or help decide what the community no longer needs.</p>
+        </div>
+        <button mat-stroked-button type="button" (click)="load()" [disabled]="loading">
+            <mat-icon>refresh</mat-icon> Refresh
+        </button>
+    </div>
+
+    <div *ngIf="loading" class="loading"><mat-spinner diameter="48"></mat-spinner></div>
+
+    <ng-container *ngIf="!loading && overview">
+        <mat-card *ngIf="!overview.settings.enabled" class="notice-card">
+            <mat-card-content>Media cleanup is currently disabled by the administrator.</mat-card-content>
+        </mat-card>
+
+        <mat-card *ngIf="overview.settings.enabled && !overview.canRequestRemoval && !overview.canVote && !overview.canManage" class="notice-card">
+            <mat-card-content>You do not currently have a Media Cleanup role assigned to your Ombi account.</mat-card-content>
+        </mat-card>
+
+        <div class="mode-summary" *ngIf="overview.settings.enabled">
+            <span><strong>Your requests:</strong>
+                {{ overview.settings.ownRequestRemoval === OwnRequestRemovalMode.Off ? 'Off' :
+                   overview.settings.ownRequestRemoval === OwnRequestRemovalMode.RequestRemoval ? 'Admin approval' : 'Immediate removal' }}
+            </span>
+            <span><strong>Community:</strong>
+                {{ overview.settings.communityCleanup === CommunityCleanupMode.Off ? 'Off' :
+                   overview.settings.communityCleanup === CommunityCleanupMode.AdminApproval ? 'Voting + admin approval' : 'Automatic after threshold' }}
+            </span>
+        </div>
+
+        <div *ngIf="overview.items.length === 0" class="empty-state">
+            No available Ombi requests are currently eligible for cleanup.
+        </div>
+
+        <div class="cleanup-grid">
+            <mat-card class="cleanup-card" *ngFor="let item of overview.items">
+                <div class="poster-wrap" *ngIf="posterUrl(item.posterPath)">
+                    <img [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
+                </div>
+                <mat-card-content>
+                    <div class="title-row">
+                        <div>
+                            <h2>{{ item.title }}</h2>
+                            <span class="muted">{{ mediaTypeText(item.requestType) }} · {{ formatBytes(item.sizeOnDisk) }}</span>
+                        </div>
+                        <span class="owner-chip" *ngIf="item.ownedByCurrentUser">Your request</span>
+                    </div>
+
+                    <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
+                    <p class="metadata" *ngIf="item.availableSince">Available since {{ item.availableSince | date:'mediumDate' }}</p>
+
+                    <ng-container *ngIf="!item.cleanup">
+                        <div class="actions">
+                            <button mat-raised-button color="warn" type="button"
+                                    *ngIf="item.canRequestOwnRemoval"
+                                    [disabled]="!!busyId"
+                                    (click)="requestOwnRemoval(item)">
+                                <mat-icon>delete_outline</mat-icon> {{ ownActionText() }}
+                            </button>
+
+                            <button mat-stroked-button type="button"
+                                    *ngIf="item.canNominate"
+                                    [disabled]="!!busyId"
+                                    (click)="nominate(item)">
+                                <mat-icon>how_to_vote</mat-icon> Nominate for cleanup
+                            </button>
+                        </div>
+
+                        <p class="hint" *ngIf="overview.settings.communityCleanup !== CommunityCleanupMode.Off && !item.communityAgeEligible">
+                            Community cleanup is available after {{ overview.settings.minimumMediaAgeDays }} days.
+                        </p>
+                    </ng-container>
+
+                    <ng-container *ngIf="item.cleanup as cleanup">
+                        <div class="cleanup-status">
+                            <strong>{{ statusText(cleanup.status) }}</strong>
+                            <span *ngIf="cleanup.origin === MediaCleanupOrigin.Community">
+                                {{ cleanup.deleteVotes }} remove · {{ cleanup.keepVotes }} keep
+                            </span>
+                            <span class="veto" *ngIf="cleanup.requesterVeto">Requester veto active</span>
+                        </div>
+
+                        <p class="metadata" *ngIf="cleanup.votingEndsAt && cleanup.status === MediaCleanupStatus.Voting">
+                            Voting ends {{ cleanup.votingEndsAt | date:'medium' }}
+                        </p>
+                        <p class="metadata danger" *ngIf="cleanup.scheduledForDeletionAt">
+                            Scheduled for removal {{ cleanup.scheduledForDeletionAt | date:'medium' }}
+                        </p>
+
+                        <div class="actions" *ngIf="item.canVote">
+                            <button mat-stroked-button type="button"
+                                    [class.selected-vote]="cleanup.myVote === MediaCleanupVoteType.Keep"
+                                    [disabled]="!!busyId"
+                                    (click)="vote(item, MediaCleanupVoteType.Keep)">
+                                <mat-icon>thumb_up</mat-icon> Keep
+                            </button>
+                            <button mat-stroked-button color="warn" type="button"
+                                    [class.selected-vote]="cleanup.myVote === MediaCleanupVoteType.Delete"
+                                    [disabled]="!!busyId"
+                                    (click)="vote(item, MediaCleanupVoteType.Delete)">
+                                <mat-icon>delete_outline</mat-icon> Remove
+                            </button>
+                        </div>
+
+                        <div class="actions" *ngIf="canApprove(item)">
+                            <button mat-raised-button color="warn" type="button" [disabled]="!!busyId" (click)="approve(item)">
+                                Approve removal
+                            </button>
+                            <button mat-stroked-button type="button" [disabled]="!!busyId" (click)="reject(item)">
+                                Reject
+                            </button>
+                        </div>
+
+                        <div class="actions" *ngIf="item.canCancel">
+                            <button mat-button type="button" [disabled]="!!busyId" (click)="cancel(item)">Cancel cleanup</button>
+                        </div>
+                    </ng-container>
+                </mat-card-content>
+            </mat-card>
+        </div>
+    </ng-container>
+</div>
