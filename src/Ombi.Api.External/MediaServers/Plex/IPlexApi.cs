@@ -18,6 +18,7 @@ namespace Ombi.Api.External.MediaServers.Plex
         Task<PlexServer> GetServer(string authToken);
         Task<PlexContainer> GetLibrarySections(string authToken, string plexFullHost);
         Task<PlexContainer> GetLibrary(string authToken, string plexFullHost, string libraryId);
+        Task<PlexContainer> GetHistory(string authToken, string plexFullHost, string metadataItemId, CancellationToken cancellationToken = default);
         Task<PlexMetadata> GetEpisodeMetaData(string authToken, string host, string ratingKey);
         Task<PlexMetadata> GetMetadata(string authToken, string plexFullHost, string itemId);
         Task<PlexMetadata> GetSeasons(string authToken, string plexFullHost, string ratingKey);

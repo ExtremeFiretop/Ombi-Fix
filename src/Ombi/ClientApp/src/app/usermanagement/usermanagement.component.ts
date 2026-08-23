@@ -63,7 +63,7 @@ import { SelectionModel } from "@angular/cdk/collections";
 export class UserManagementComponent implements OnInit {
 
     public displayedColumns: string[] = ['select', 'username', 'alias', 'email', 'roles', 'remainingRequests',
-        'nextRequestDue', 'lastLoggedIn', 'userType', 'actions'];
+        'nextRequestDue', 'lastLoggedIn', 'lastActive', 'userType', 'actions'];
     public dataSource: MatTableDataSource<IUser>;
 
     public selection = new SelectionModel<IUser>(true, []);

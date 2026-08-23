@@ -79,7 +79,6 @@ jobs:
          run: |
            echo "outputs: ${{ steps.changelog.outputs.tag }}"
            echo "Version: ${{ steps.changelog.outputs.version }}"
-           echo "log: ${{ steps.changelog.outputs.clean_changelog }}"
 
   publish:
     runs-on: ubuntu-latest

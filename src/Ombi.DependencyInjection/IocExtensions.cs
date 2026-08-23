@@ -298,6 +298,7 @@ namespace Ombi.DependencyInjection
             services.AddTransient<IArrAvailabilityChecker, ArrAvailabilityChecker>();
             services.AddTransient<IAutoDeleteRequests, AutoDeleteRequests>();
             services.AddTransient<IMediaCleanupJob, MediaCleanupJob>();
+            services.AddTransient<IMediaCleanupVoteReminderJob, MediaCleanupVoteReminderJob>();
         }
 
         public static void RegisterHubs(this IServiceCollection services)

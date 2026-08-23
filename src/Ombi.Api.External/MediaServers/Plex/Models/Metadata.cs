@@ -37,6 +37,7 @@ namespace Ombi.Api.External.MediaServers.Plex.Models
         public string grandparentThumb { get; set; }
         public string grandparentArt { get; set; }
         public string grandparentTheme { get; set; }
+        public long? viewedAt { get; set; }
         public string chapterSource { get; set; }
         public Medium[] Media { get; set; }
          [JsonProperty("Guid")] // force uppercase to solve conflict with lowercase guid

@@ -228,6 +228,7 @@ export interface IJobSettings {
   mediaDatabaseRefresh: string;
   autoDeleteRequests: string;
   mediaCleanup: string;
+  mediaCleanupVoteReminder: string;
   embyRecentlyAddedSync: string;
   plexWatchlistImport: string;
 }

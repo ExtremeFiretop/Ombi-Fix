@@ -292,6 +292,9 @@ namespace Ombi.Store.Migrations.OmbiPostgres
                     b.Property<DateTime?>("LastLoggedIn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LastActive")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
 

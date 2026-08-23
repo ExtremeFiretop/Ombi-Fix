@@ -4,18 +4,25 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Ombi.Api.External.ExternalApis.Radarr;
 using Ombi.Api.External.ExternalApis.Sonarr;
+using Ombi.Api.External.MediaServers.Plex;
 using Ombi.Core.Authentication;
 using Ombi.Core.Engine.Interfaces;
 using Ombi.Core.Helpers;
 using Ombi.Core.Models.MediaCleanup;
 using Ombi.Core.Settings;
+using Ombi.Core.Settings.Models.External;
 using Ombi.Helpers;
+using Ombi.Notifications;
+using Ombi.Notifications.Models;
 using Ombi.Settings.Settings.Models;
 using Ombi.Settings.Settings.Models.External;
+using Ombi.Settings.Settings.Models.Notifications;
 using Ombi.Store.Entities;
+using Ombi.Store.Repository;
 using Ombi.Store.Repository.Requests;
 
 namespace Ombi.Core.Engine
@@ -29,13 +36,20 @@ namespace Ombi.Core.Engine
         private readonly ISettingsService<RadarrSettings> _radarrSettings;
         private readonly ISettingsService<Radarr4KSettings> _radarr4KSettings;
         private readonly ISettingsService<SonarrSettings> _sonarrSettings;
+        private readonly ISettingsService<PlexSettings> _plexSettings;
         private readonly IMovieRequestRepository _movieRequests;
         private readonly ITvRequestRepository _tvRequests;
         private readonly ICurrentUser _currentUser;
         private readonly OmbiUserManager _userManager;
         private readonly IRadarrV3Api _radarr;
         private readonly ISonarrV3Api _sonarr;
+        private readonly IPlexApi _plex;
+        private readonly IPlexContentRepository _plexContent;
+        private readonly IExternalRepository<RadarrCache> _radarrCache;
+        private readonly IExternalRepository<SonarrCache> _sonarrCache;
+        private readonly IExternalRepository<SonarrEpisodeCache> _sonarrEpisodeCache;
         private readonly IMediaCacheService _mediaCache;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly ILogger<MediaCleanupEngine> _logger;
 
         public MediaCleanupEngine(
@@ -44,13 +58,20 @@ namespace Ombi.Core.Engine
             ISettingsService<RadarrSettings> radarrSettings,
             ISettingsService<Radarr4KSettings> radarr4KSettings,
             ISettingsService<SonarrSettings> sonarrSettings,
+            ISettingsService<PlexSettings> plexSettings,
             IMovieRequestRepository movieRequests,
             ITvRequestRepository tvRequests,
             ICurrentUser currentUser,
             OmbiUserManager userManager,
             IRadarrV3Api radarr,
             ISonarrV3Api sonarr,
+            IPlexApi plex,
+            IPlexContentRepository plexContent,
+            IExternalRepository<RadarrCache> radarrCache,
+            IExternalRepository<SonarrCache> sonarrCache,
+            IExternalRepository<SonarrEpisodeCache> sonarrEpisodeCache,
             IMediaCacheService mediaCache,
+            IServiceScopeFactory serviceScopeFactory,
             ILogger<MediaCleanupEngine> logger)
         {
             _settings = settings;
@@ -58,17 +79,30 @@ namespace Ombi.Core.Engine
             _radarrSettings = radarrSettings;
             _radarr4KSettings = radarr4KSettings;
             _sonarrSettings = sonarrSettings;
+            _plexSettings = plexSettings;
             _movieRequests = movieRequests;
             _tvRequests = tvRequests;
             _currentUser = currentUser;
             _userManager = userManager;
             _radarr = radarr;
             _sonarr = sonarr;
+            _plex = plex;
+            _plexContent = plexContent;
+            _radarrCache = radarrCache;
+            _sonarrCache = sonarrCache;
+            _sonarrEpisodeCache = sonarrEpisodeCache;
             _mediaCache = mediaCache;
+            _serviceScopeFactory = serviceScopeFactory;
             _logger = logger;
         }
 
-        public async Task<MediaCleanupOverview> GetOverview()
+        public async Task<MediaCleanupOverview> GetOverview(
+            RequestType? requestType = null,
+            int? requestId = null,
+            int? mediaId = null,
+            bool includeMetrics = true,
+            bool includeLastPlayed = true,
+            CancellationToken cancellationToken = default)
         {
             var settings = await _settings.GetSettingsAsync();
             var user = await _currentUser.GetUser();
@@ -84,6 +118,35 @@ namespace Ombi.Core.Engine
                 .GroupBy(x => new { x.RequestType, x.MediaRequestId })
                 .ToDictionary(x => (x.Key.RequestType, x.Key.MediaRequestId), x => x.OrderByDescending(r => r.CreatedAt).First());
 
+            // Vote identities are moderation data. Only cleanup managers/admins receive
+            // them; normal voters continue to see aggregate totals and their own vote.
+            Dictionary<string, string> voterDisplayNames = null;
+            if (permissions.CanManage)
+            {
+                var voterIds = active.Values
+                    .SelectMany(x => x.Votes ?? new List<MediaCleanupVoteRecord>())
+                    .Select(x => x.UserId)
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .Distinct()
+                    .ToList();
+
+                if (voterIds.Count > 0)
+                {
+                    var voters = await _userManager.Users
+                        .Where(x => voterIds.Contains(x.Id))
+                        .Select(x => new { x.Id, x.Alias, x.UserName })
+                        .ToListAsync(cancellationToken);
+
+                    voterDisplayNames = voters.ToDictionary(
+                        x => x.Id,
+                        x => string.IsNullOrWhiteSpace(x.Alias) ? x.UserName : x.Alias);
+                }
+                else
+                {
+                    voterDisplayNames = new Dictionary<string, string>();
+                }
+            }
+
             var result = new MediaCleanupOverview
             {
                 Settings = settings,
@@ -93,89 +156,139 @@ namespace Ombi.Core.Engine
                 CanManage = permissions.CanManage
             };
 
-            var movieSizes = await GetMovieSizes();
-            var tvSizes = await GetTvSizes();
+            var includeMovies = !requestType.HasValue || requestType == RequestType.Movie;
+            var includeTv = !requestType.HasValue || requestType == RequestType.TvShow;
+            var movieSizes = includeMetrics && includeMovies ? await GetMovieSizes() : new Dictionary<int, long>();
+            var tvSizes = includeMetrics && includeTv ? await GetTvSizes() : new Dictionary<int, long>();
+            var plexLookup = includeLastPlayed ? await GetPlexContentLookup() : null;
+            var plexKeys = new Dictionary<(RequestType Type, int RequestId), string>();
             var now = DateTime.UtcNow;
 
-            var movies = await _movieRequests.GetWithUser()
-                .Where(x => x.Available)
-                .OrderBy(x => x.Title)
-                .ToListAsync();
-
-            foreach (var movie in movies)
+            if (includeMovies)
             {
-                active.TryGetValue((RequestType.Movie, movie.Id), out var cleanup);
-                var availableSince = movie.MarkedAsAvailable ?? (movie.RequestedDate == default ? (DateTime?)null : movie.RequestedDate);
-                var owned = movie.RequestedUserId == user.Id;
-                var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
-                if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
+                var movieQuery = _movieRequests.GetWithUser().Where(x => x.Available);
+                if (requestId.HasValue)
                 {
-                    continue;
+                    movieQuery = movieQuery.Where(x => x.Id == requestId.Value);
+                }
+                else if (mediaId.HasValue)
+                {
+                    // Media details pages have a stable TMDB id even when Ombi does not
+                    // expose the request id to the current user. Resolve the shared request
+                    // by provider id so community cleanup is not tied to request ownership.
+                    movieQuery = movieQuery.Where(x => x.TheMovieDbId == mediaId.Value);
                 }
 
-                result.Items.Add(new MediaCleanupItemViewModel
+                var movies = await movieQuery.OrderBy(x => x.Title).ToListAsync();
+                foreach (var movie in movies)
                 {
-                    RequestType = RequestType.Movie,
-                    RequestId = movie.Id,
-                    Title = movie.Title,
-                    PosterPath = movie.PosterPath,
-                    RequestedBy = movie.RequestedUser?.UserAlias ?? movie.RequestedByAlias,
-                    OwnedByCurrentUser = owned,
-                    CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
-                    CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
-                    CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
-                    CanManage = cleanup != null && permissions.CanManage,
-                    CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
-                    CommunityAgeEligible = ageEligible,
-                    AvailableSince = availableSince,
-                    SizeOnDisk = movieSizes.TryGetValue(movie.TheMovieDbId, out var movieSize) ? movieSize : 0,
-                    Cleanup = ToViewModel(cleanup, user.Id, settings)
-                });
+                    active.TryGetValue((RequestType.Movie, movie.Id), out var cleanup);
+                    var availableSince = movie.MarkedAsAvailable ?? (movie.RequestedDate == default ? (DateTime?)null : movie.RequestedDate);
+                    var owned = movie.RequestedUserId == user.Id;
+                    var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
+                    if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
+                    {
+                        continue;
+                    }
+
+                    if (plexLookup != null)
+                    {
+                        var plexKey = plexLookup.FindMovie(movie.TheMovieDbId, movie.ImdbId);
+                        if (!string.IsNullOrEmpty(plexKey))
+                        {
+                            plexKeys[(RequestType.Movie, movie.Id)] = plexKey;
+                        }
+                    }
+
+                    result.Items.Add(new MediaCleanupItemViewModel
+                    {
+                        RequestType = RequestType.Movie,
+                        RequestId = movie.Id,
+                        Title = movie.Title,
+                        PosterPath = movie.PosterPath,
+                        RequestedBy = movie.RequestedUser?.UserAlias ?? movie.RequestedByAlias,
+                        OwnedByCurrentUser = owned,
+                        CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
+                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
+                        CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
+                        CanManage = cleanup != null && permissions.CanManage,
+                        CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
+                        CommunityAgeEligible = ageEligible,
+                        AvailableSince = availableSince,
+                        SizeOnDisk = movieSizes.TryGetValue(movie.TheMovieDbId, out var movieSize) ? movieSize : 0,
+                        Cleanup = ToViewModel(cleanup, user.Id, settings, voterDisplayNames)
+                    });
+                }
             }
 
-            var tvRequests = await _tvRequests.GetLite()
-                .Where(x => x.ChildRequests.Any() && x.ChildRequests.All(c => c.Available))
-                .OrderBy(x => x.Title)
-                .ToListAsync();
-
-            foreach (var tv in tvRequests)
+            if (includeTv)
             {
-                active.TryGetValue((RequestType.TvShow, tv.Id), out var cleanup);
-                var owners = tv.ChildRequests.Select(x => x.RequestedUserId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
-                var owned = owners.Count == 1 && owners[0] == user.Id;
-                var availableSince = tv.ChildRequests
-                    .Select(x => x.MarkedAsAvailable ?? (x.RequestedDate == default ? (DateTime?)null : x.RequestedDate))
-                    .Where(x => x.HasValue)
-                    .OrderByDescending(x => x.Value)
-                    .FirstOrDefault();
-                var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
-                var requestedBy = tv.ChildRequests.Select(x => x.RequestedUser?.UserAlias ?? x.RequestedByAlias)
-                    .Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
-                if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
+                var tvQuery = _tvRequests.GetLite()
+                    .Where(x => x.ChildRequests.Any() && x.ChildRequests.All(c => c.Available));
+                if (requestId.HasValue)
                 {
-                    continue;
+                    tvQuery = tvQuery.Where(x => x.Id == requestId.Value);
+                }
+                else if (mediaId.HasValue)
+                {
+                    // TV detail ids are TMDB ids in the current search model. Keep the
+                    // legacy TVDB comparison as a fallback for older request records.
+                    tvQuery = tvQuery.Where(x => x.ExternalProviderId == mediaId.Value || x.TvDbId == mediaId.Value);
                 }
 
-                result.Items.Add(new MediaCleanupItemViewModel
+                var tvRequests = await tvQuery.OrderBy(x => x.Title).ToListAsync();
+                foreach (var tv in tvRequests)
                 {
-                    RequestType = RequestType.TvShow,
-                    RequestId = tv.Id,
-                    Title = tv.Title,
-                    PosterPath = tv.PosterPath,
-                    RequestedBy = requestedBy.Count == 1 ? requestedBy[0] : requestedBy.Count > 1 ? "Multiple users" : string.Empty,
-                    OwnedByCurrentUser = owned,
-                    CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
-                    CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
-                    CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
-                    CanManage = cleanup != null && permissions.CanManage,
-                    CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
-                    CommunityAgeEligible = ageEligible,
-                    AvailableSince = availableSince,
-                    SizeOnDisk = tvSizes.TryGetValue(tv.TvDbId, out var tvSize) ? tvSize : 0,
-                    Cleanup = ToViewModel(cleanup, user.Id, settings)
-                });
+                    active.TryGetValue((RequestType.TvShow, tv.Id), out var cleanup);
+                    var owners = tv.ChildRequests.Select(x => x.RequestedUserId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+                    var owned = owners.Count == 1 && owners[0] == user.Id;
+                    var availableSince = tv.ChildRequests
+                        .Select(x => x.MarkedAsAvailable ?? (x.RequestedDate == default ? (DateTime?)null : x.RequestedDate))
+                        .Where(x => x.HasValue)
+                        .OrderByDescending(x => x.Value)
+                        .FirstOrDefault();
+                    var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
+                    var requestedBy = tv.ChildRequests.Select(x => x.RequestedUser?.UserAlias ?? x.RequestedByAlias)
+                        .Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+                    if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
+                    {
+                        continue;
+                    }
+
+                    if (plexLookup != null)
+                    {
+                        var plexKey = plexLookup.FindSeries(tv.TvDbId, tv.ExternalProviderId, tv.ImdbId);
+                        if (!string.IsNullOrEmpty(plexKey))
+                        {
+                            plexKeys[(RequestType.TvShow, tv.Id)] = plexKey;
+                        }
+                    }
+
+                    result.Items.Add(new MediaCleanupItemViewModel
+                    {
+                        RequestType = RequestType.TvShow,
+                        RequestId = tv.Id,
+                        Title = tv.Title,
+                        PosterPath = tv.PosterPath,
+                        RequestedBy = requestedBy.Count == 1 ? requestedBy[0] : requestedBy.Count > 1 ? "Multiple users" : string.Empty,
+                        OwnedByCurrentUser = owned,
+                        CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
+                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
+                        CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
+                        CanManage = cleanup != null && permissions.CanManage,
+                        CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
+                        CommunityAgeEligible = ageEligible,
+                        AvailableSince = availableSince,
+                        SizeOnDisk = tvSizes.TryGetValue(tv.TvDbId, out var tvSize) ? tvSize : 0,
+                        Cleanup = ToViewModel(cleanup, user.Id, settings, voterDisplayNames)
+                    });
+                }
             }
 
+            if (includeLastPlayed)
+            {
+                await PopulateLastPlayed(result.Items, plexKeys, cancellationToken);
+            }
             return result;
         }
 
@@ -232,14 +345,17 @@ namespace Ombi.Core.Engine
                     record.Status = MediaCleanupStatus.PendingAdminApproval;
                     state.Requests.Add(record);
                     await SaveState(state);
+                    QueueManagersPendingApprovalNotification(record, settings);
                     return Success("Removal request submitted for administrator approval.", record.Id);
                 }
 
                 record.Status = MediaCleanupStatus.ScheduledForDeletion;
                 record.ScheduledForDeletionAt = DateTime.UtcNow;
                 state.Requests.Add(record);
-                await SaveState(state);
 
+                // Immediate deletion is synchronous. Persist the final state once after the
+                // deletion attempt to avoid tracking two GlobalSettings instances in the
+                // same scoped SettingsContext.
                 await ExecuteDeletion(record, settings);
                 await SaveState(state);
                 return record.Status == MediaCleanupStatus.Completed
@@ -305,6 +421,10 @@ namespace Ombi.Core.Engine
                 EvaluateCommunity(record, settings, DateTime.UtcNow);
                 state.Requests.Add(record);
                 await SaveState(state);
+                if (record.Status == MediaCleanupStatus.PendingAdminApproval)
+                {
+                    QueueManagersPendingApprovalNotification(record, settings);
+                }
 
                 return Success("Cleanup vote started. Your delete vote was recorded.", record.Id);
             }
@@ -344,13 +464,20 @@ namespace Ombi.Core.Engine
                     return Fail("This cleanup request is not open for voting.");
                 }
 
+                var statusBeforeDeadlineEvaluation = record.Status;
                 EvaluateCommunity(record, settings, DateTime.UtcNow);
                 if (!IsVoteable(record))
                 {
                     await SaveState(state);
+                    if (statusBeforeDeadlineEvaluation != MediaCleanupStatus.PendingAdminApproval &&
+                        record.Status == MediaCleanupStatus.PendingAdminApproval)
+                    {
+                        QueueManagersPendingApprovalNotification(record, settings);
+                    }
                     return Fail("This cleanup request is no longer open for voting.", record.Id);
                 }
 
+                var previousStatus = record.Status;
                 var existing = record.Votes.FirstOrDefault(x => x.UserId == user.Id);
                 if (existing == null)
                 {
@@ -364,6 +491,10 @@ namespace Ombi.Core.Engine
 
                 EvaluateCommunity(record, settings, DateTime.UtcNow);
                 await SaveState(state);
+                if (previousStatus != MediaCleanupStatus.PendingAdminApproval && record.Status == MediaCleanupStatus.PendingAdminApproval)
+                {
+                    QueueManagersPendingApprovalNotification(record, settings);
+                }
                 return Success(vote == MediaCleanupVoteType.Delete ? "Delete vote recorded." : "Keep vote recorded.", record.Id);
             }
             finally
@@ -457,6 +588,7 @@ namespace Ombi.Core.Engine
                 var state = await LoadState();
                 var now = DateTime.UtcNow;
                 var changed = false;
+                var newlyPendingApproval = new List<MediaCleanupRecord>();
 
                 foreach (var record in state.Requests.Where(IsActive).ToList())
                 {
@@ -466,6 +598,10 @@ namespace Ombi.Core.Engine
                         var beforeScheduled = record.ScheduledForDeletionAt;
                         EvaluateCommunity(record, settings, now);
                         changed |= before != record.Status || beforeScheduled != record.ScheduledForDeletionAt;
+                        if (before != MediaCleanupStatus.PendingAdminApproval && record.Status == MediaCleanupStatus.PendingAdminApproval)
+                        {
+                            newlyPendingApproval.Add(record);
+                        }
                     }
 
                     if (record.Status == MediaCleanupStatus.ScheduledForDeletion &&
@@ -481,6 +617,11 @@ namespace Ombi.Core.Engine
                 if (changed)
                 {
                     await SaveState(state);
+                }
+
+                foreach (var record in newlyPendingApproval)
+                {
+                    QueueManagersPendingApprovalNotification(record, settings);
                 }
             }
             finally
@@ -523,6 +664,79 @@ namespace Ombi.Core.Engine
             }
         }
 
+        private void QueueManagersPendingApprovalNotification(MediaCleanupRecord record, MediaCleanupSettings cleanupSettings)
+        {
+            if (!cleanupSettings.NotifyManagersOnPendingApproval)
+            {
+                return;
+            }
+
+            // Approval email is a secondary notification. Do not hold the user's cleanup
+            // HTTP request open while SMTP connects/sends. Use a fresh DI scope so the
+            // background work never touches request-scoped services after they are disposed.
+            var cleanupId = record.Id;
+            var title = record.Title;
+            var requestedByUserId = record.RequestedByUserId;
+            var origin = record.Origin;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _serviceScopeFactory.CreateScope();
+                    var emailSettingsService = scope.ServiceProvider.GetRequiredService<ISettingsService<EmailNotificationSettings>>();
+                    var userManager = scope.ServiceProvider.GetRequiredService<OmbiUserManager>();
+                    var emailProvider = scope.ServiceProvider.GetRequiredService<IEmailProvider>();
+
+                    var emailSettings = await emailSettingsService.GetSettingsAsync();
+                    if (emailSettings == null || !emailSettings.Enabled)
+                    {
+                        return;
+                    }
+
+                    var recipients = new List<OmbiUser>();
+                    recipients.AddRange(await userManager.GetUsersInRoleAsync(OmbiRoles.Admin));
+                    recipients.AddRange(await userManager.GetUsersInRoleAsync(OmbiRoles.PowerUser));
+                    recipients.AddRange(await userManager.GetUsersInRoleAsync(OmbiRoles.ManageMediaCleanup));
+
+                    var requester = string.IsNullOrEmpty(requestedByUserId)
+                        ? null
+                        : await userManager.FindByIdAsync(requestedByUserId);
+                    var requesterName = requester?.UserAlias ?? "An Ombi user";
+                    var encodedTitle = System.Net.WebUtility.HtmlEncode(title ?? "Media");
+                    var encodedRequester = System.Net.WebUtility.HtmlEncode(requesterName);
+                    var source = origin == MediaCleanupOrigin.OwnRequest
+                        ? $"{encodedRequester} requested removal of this title."
+                        : "A community cleanup vote reached the configured threshold and now requires approval.";
+                    var plainSource = origin == MediaCleanupOrigin.OwnRequest
+                        ? $"{requesterName} requested removal of this title."
+                        : "A community cleanup vote reached the configured threshold and now requires approval.";
+
+                    foreach (var recipient in recipients
+                        .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Email))
+                        .GroupBy(x => x.Id)
+                        .Select(x => x.First()))
+                    {
+                        await emailProvider.SendAdHoc(new NotificationMessage
+                        {
+                            To = recipient.Email,
+                            Subject = $"Media cleanup approval required: {title}",
+                            Message = $"<p><strong>{encodedTitle}</strong> is waiting for Media Cleanup approval.</p><p>{source}</p><p>Open Ombi and go to <strong>Media Cleanup</strong> to approve or reject it.</p>",
+                            Other =
+                            {
+                                ["PlainTextBody"] = $"{title} is waiting for Media Cleanup approval. {plainSource} Open Ombi and go to Media Cleanup to approve or reject it."
+                            }
+                        }, emailSettings);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Approval workflow must not fail merely because SMTP is unavailable.
+                    _logger.LogWarning(ex, "Could not send Media Cleanup approval notification for {Title} ({CleanupId})", title, cleanupId);
+                }
+            });
+        }
+
         private async Task ExecuteDeletion(MediaCleanupRecord record, MediaCleanupSettings settings)
         {
             try
@@ -540,21 +754,38 @@ namespace Ombi.Core.Engine
 
                 if (record.RequestType == RequestType.Movie)
                 {
-                    var movieRequest = await _movieRequests.GetAll().FirstOrDefaultAsync(x => x.Id == record.MediaRequestId);
-                    if (movieRequest != null)
+                    // The details page determines Requested by provider id, not by the cleanup
+                    // record's single request id. Remove every Ombi request row for this movie so
+                    // historical/duplicate rows cannot leave the title stuck as Requested.
+                    var movieRequests = await _movieRequests.GetAll()
+                        .Where(x => x.TheMovieDbId == record.TheMovieDbId || x.Id == record.MediaRequestId)
+                        .ToListAsync();
+                    if (movieRequests.Count > 0)
                     {
-                        await _movieRequests.Delete(movieRequest);
+                        await _movieRequests.DeleteRange(movieRequests);
                     }
                 }
                 else
                 {
-                    var tvRequest = await _tvRequests.Get().FirstOrDefaultAsync(x => x.Id == record.MediaRequestId);
-                    if (tvRequest != null)
+                    // Same rule for TV: once the actual series is removed, all Ombi request
+                    // parents for that provider identity must be removed or ExistingRule can still
+                    // report the series as requested.
+                    var tvRequests = await _tvRequests.Get()
+                        .Where(x => x.Id == record.MediaRequestId ||
+                                    (record.TheMovieDbId > 0 && x.ExternalProviderId == record.TheMovieDbId) ||
+                                    (record.TvDbId > 0 && x.TvDbId == record.TvDbId))
+                        .ToListAsync();
+                    if (tvRequests.Count > 0)
                     {
-                        await _tvRequests.Delete(tvRequest);
+                        await _tvRequests.DeleteRange(tvRequests);
                     }
                 }
 
+                // Plex availability is backed by Ombi's external content cache, not a live Plex lookup.
+                // A partial Plex sync is additive and can leave a deleted title marked Available, so
+                // remove the matching cached row immediately after a successful cleanup.
+                await RemovePlexAvailabilityCache(record);
+                await RemoveArrSearchCache(record);
                 await _mediaCache.Purge();
                 record.Status = MediaCleanupStatus.Completed;
                 record.CompletedAt = DateTime.UtcNow;
@@ -568,6 +799,138 @@ namespace Ombi.Core.Engine
                 record.FailureReason = ex.Message;
                 record.ScheduledForDeletionAt = null;
                 _logger.LogError(ex, "Media cleanup failed for {RequestType} '{Title}' ({CleanupId})", record.RequestType, record.Title, record.Id);
+            }
+        }
+
+        private async Task RemoveArrSearchCache(MediaCleanupRecord record)
+        {
+            try
+            {
+                if (record.RequestType == RequestType.Movie)
+                {
+                    var matches = await _radarrCache.GetAll()
+                        .Where(x => x.TheMovieDbId == record.TheMovieDbId)
+                        .ToListAsync();
+                    if (matches.Count > 0)
+                    {
+                        await _radarrCache.DeleteRange(matches);
+                        _logger.LogInformation(
+                            "Removed {Count} stale Radarr cache row(s) for '{Title}' (TMDB {TmdbId})",
+                            matches.Count,
+                            record.Title,
+                            record.TheMovieDbId);
+                    }
+                    return;
+                }
+
+                if (record.RequestType == RequestType.TvShow)
+                {
+                    var seriesMatches = await _sonarrCache.GetAll()
+                        .Where(x =>
+                            (record.TvDbId > 0 && x.TvDbId == record.TvDbId) ||
+                            (record.TheMovieDbId > 0 && x.TheMovieDbId == record.TheMovieDbId))
+                        .ToListAsync();
+
+                    var episodeMatches = await _sonarrEpisodeCache.GetAll()
+                        .Where(x =>
+                            (record.TvDbId > 0 && x.TvDbId == record.TvDbId) ||
+                            (record.TheMovieDbId > 0 && x.MovieDbId == record.TheMovieDbId))
+                        .ToListAsync();
+
+                    if (episodeMatches.Count > 0)
+                    {
+                        await _sonarrEpisodeCache.DeleteRange(episodeMatches);
+                    }
+                    if (seriesMatches.Count > 0)
+                    {
+                        await _sonarrCache.DeleteRange(seriesMatches);
+                    }
+
+                    if (seriesMatches.Count > 0 || episodeMatches.Count > 0)
+                    {
+                        _logger.LogInformation(
+                            "Removed stale Sonarr cache for '{Title}': {SeriesCount} series row(s), {EpisodeCount} episode row(s)",
+                            record.Title,
+                            seriesMatches.Count,
+                            episodeMatches.Count);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // The destructive *arr operation and Ombi request removal have already succeeded.
+                // A stale external cache should never turn that successful cleanup into a false failure.
+                _logger.LogWarning(ex,
+                    "Could not remove *arr search cache for {RequestType} '{Title}'",
+                    record.RequestType,
+                    record.Title);
+            }
+        }
+
+        private async Task RemovePlexAvailabilityCache(MediaCleanupRecord record)
+        {
+            try
+            {
+                var plexSettings = await _plexSettings.GetSettingsAsync();
+                if (plexSettings?.Enable != true || plexSettings.Servers == null || plexSettings.Servers.Count == 0)
+                {
+                    return;
+                }
+
+                // Plex rating keys and cached rows are not associated with a specific configured
+                // Plex server in Ombi. Purging provider matches is therefore only unambiguous when
+                // one Plex server is configured. A normal/full media database refresh remains the
+                // safe reconciliation path for multi-server installations.
+                if (plexSettings.Servers.Count != 1)
+                {
+                    _logger.LogWarning(
+                        "Skipping direct Plex availability cache cleanup for {Title} because {ServerCount} Plex servers are configured",
+                        record.Title,
+                        plexSettings.Servers.Count);
+                    return;
+                }
+
+                var mediaType = record.RequestType == RequestType.Movie ? MediaType.Movie : MediaType.Series;
+                var tmdbId = record.TheMovieDbId > 0 ? record.TheMovieDbId.ToString() : null;
+                var tvdbId = record.TvDbId > 0 ? record.TvDbId.ToString() : null;
+                var requestId = record.MediaRequestId;
+
+                var matches = _plexContent.GetWhereContentByCustom(x =>
+                        x.Type == mediaType &&
+                        ((tmdbId != null && x.TheMovieDbId == tmdbId) ||
+                         (tvdbId != null && x.TvDbId == tvdbId) ||
+                         x.RequestId == requestId))
+                    .Select(x => x.Id)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var id in matches)
+                {
+                    // GetFirstContentByCustom includes seasons and episodes, which lets the
+                    // repository remove the complete cached graph without leaving FK rows behind.
+                    var content = await _plexContent.GetFirstContentByCustom(x => x.Id == id);
+                    if (content == null)
+                    {
+                        continue;
+                    }
+
+                    await _plexContent.DeleteContent(content);
+                    _logger.LogInformation(
+                        "Removed stale Plex availability cache for {RequestType} '{Title}' (Plex content {PlexContentId})",
+                        record.RequestType,
+                        record.Title,
+                        id);
+                }
+            }
+            catch (Exception ex)
+            {
+                // The destructive *arr operation and Ombi request removal have already succeeded.
+                // A cache-maintenance failure must not turn that successful cleanup into a false
+                // failure response; a full media database refresh can reconcile it later.
+                _logger.LogWarning(ex,
+                    "Could not remove Plex availability cache for {RequestType} '{Title}'",
+                    record.RequestType,
+                    record.Title);
             }
         }
 
@@ -680,6 +1043,94 @@ namespace Ombi.Core.Engine
             return result;
         }
 
+        private async Task<PlexContentLookup> GetPlexContentLookup()
+        {
+            try
+            {
+                var content = await _plexContent.GetAll().AsNoTracking().ToListAsync();
+                return new PlexContentLookup(content);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load Plex content mappings for media cleanup play history");
+                return new PlexContentLookup(Array.Empty<PlexServerContent>());
+            }
+        }
+
+        private async Task PopulateLastPlayed(
+            IEnumerable<MediaCleanupItemViewModel> items,
+            IReadOnlyDictionary<(RequestType Type, int RequestId), string> plexKeys,
+            CancellationToken cancellationToken)
+        {
+            if (plexKeys.Count == 0)
+            {
+                return;
+            }
+
+            var settings = await _plexSettings.GetSettingsAsync();
+            var servers = settings?.Enable == true
+                ? settings.Servers?.Where(x => x != null && !string.IsNullOrWhiteSpace(x.PlexAuthToken) && !string.IsNullOrWhiteSpace(x.Ip)).ToList()
+                : null;
+
+            // PlexServerContent currently does not record which Plex server supplied a rating key.
+            // Querying more than one configured server could therefore match an unrelated ratingKey.
+            if (servers == null || servers.Count != 1)
+            {
+                if (servers?.Count > 1)
+                {
+                    _logger.LogDebug("Media cleanup last-played lookup is skipped when multiple Plex servers are configured because cached Plex rating keys are not server-scoped");
+                }
+                return;
+            }
+
+            var server = servers[0];
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            using var concurrency = new SemaphoreSlim(6, 6);
+            var tasks = items
+                .Where(item => plexKeys.ContainsKey((item.RequestType, item.RequestId)))
+                .Select(async item =>
+                {
+                    var entered = false;
+                    try
+                    {
+                        await concurrency.WaitAsync(timeout.Token);
+                        entered = true;
+                        var key = plexKeys[(item.RequestType, item.RequestId)];
+                        var history = await _plex.GetHistory(server.PlexAuthToken, server.FullUri, key, timeout.Token);
+                        var latest = history?.MediaContainer?.Metadata?.FirstOrDefault();
+
+                        // A successful empty response means Plex has no recorded play for this title.
+                        item.LastPlayedKnown = true;
+                        if (latest?.viewedAt > 0)
+                        {
+                            item.LastPlayedAt = DateTimeOffset.FromUnixTimeSeconds(latest.viewedAt.Value).UtcDateTime;
+                        }
+                    }
+                    catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                    {
+                        // Leave LastPlayedKnown false. The cleanup page treats this as Unknown.
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not load Plex play history for cleanup item {Title}", item.Title);
+                    }
+                    finally
+                    {
+                        if (entered)
+                        {
+                            concurrency.Release();
+                        }
+                    }
+                });
+
+            await Task.WhenAll(tasks);
+            if (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogDebug("Media cleanup last-played lookup reached its 15 second time limit; unresolved titles will remain Unknown");
+            }
+        }
+
         private async Task<CleanupTarget> ResolveTarget(RequestType requestType, int requestId)
         {
             if (requestType == RequestType.Movie)
@@ -763,6 +1214,23 @@ namespace Ombi.Core.Engine
                 return;
             }
 
+            // The configured voting period is a minimum voting window, not merely a
+            // deadline by which the threshold must be reached. Never advance a
+            // community cleanup request to approval or deletion before VotingEndsAt,
+            // even when the current votes already satisfy the threshold/margin.
+            //
+            // This also repairs requests that an older build advanced early: while
+            // their original voting window is still open, put them back into Voting.
+            if (record.VotingEndsAt.HasValue && record.VotingEndsAt.Value > now)
+            {
+                record.Status = MediaCleanupStatus.Voting;
+                record.ScheduledForDeletionAt = null;
+                record.ApprovedByUserId = null;
+                return;
+            }
+
+            // Voting has ended. Evaluate the final vote snapshot exactly once the
+            // configured window has elapsed. Votes can no longer change after this.
             var keepVotes = record.Votes.Count(x => x.Vote == MediaCleanupVoteType.Keep);
             var deleteVotes = record.Votes.Count(x => x.Vote == MediaCleanupVoteType.Delete);
             var requesterVeto = settings.RequesterCanVeto && record.Votes.Any(x =>
@@ -771,52 +1239,43 @@ namespace Ombi.Core.Engine
                                deleteVotes >= Math.Max(1, settings.MinimumDeleteVotes) &&
                                deleteVotes - keepVotes >= Math.Max(0, settings.RequiredVoteMargin);
 
+            if (!thresholdMet)
+            {
+                record.ApprovedByUserId = null;
+                record.Status = MediaCleanupStatus.Rejected;
+                record.ScheduledForDeletionAt = null;
+                return;
+            }
+
             if (settings.CommunityCleanup == CommunityCleanupMode.AutomaticAfterThreshold)
             {
-                if (thresholdMet)
+                if (record.Status != MediaCleanupStatus.ScheduledForDeletion)
                 {
-                    if (record.Status != MediaCleanupStatus.ScheduledForDeletion)
-                    {
-                        record.Status = MediaCleanupStatus.ScheduledForDeletion;
-                        record.ScheduledForDeletionAt = now.AddDays(Math.Max(0, settings.GracePeriodDays));
-                    }
+                    record.Status = MediaCleanupStatus.ScheduledForDeletion;
+                    record.ScheduledForDeletionAt = now.AddDays(Math.Max(0, settings.GracePeriodDays));
                 }
-                else if (record.Status == MediaCleanupStatus.ScheduledForDeletion)
-                {
-                    record.Status = MediaCleanupStatus.Voting;
-                    record.ScheduledForDeletionAt = null;
-                }
+                return;
             }
-            else if (settings.CommunityCleanup == CommunityCleanupMode.AdminApproval)
+
+            if (settings.CommunityCleanup == CommunityCleanupMode.AdminApproval)
             {
                 if (!string.IsNullOrEmpty(record.ApprovedByUserId))
                 {
-                    if (requesterVeto)
-                    {
-                        record.ApprovedByUserId = null;
-                        record.Status = MediaCleanupStatus.Voting;
-                        record.ScheduledForDeletionAt = null;
-                    }
-                    else
-                    {
-                        record.Status = MediaCleanupStatus.ScheduledForDeletion;
-                    }
+                    record.Status = MediaCleanupStatus.ScheduledForDeletion;
                 }
                 else
                 {
-                    record.Status = thresholdMet ? MediaCleanupStatus.PendingAdminApproval : MediaCleanupStatus.Voting;
+                    record.Status = MediaCleanupStatus.PendingAdminApproval;
                     record.ScheduledForDeletionAt = null;
                 }
             }
-
-            if (record.Status == MediaCleanupStatus.Voting && record.VotingEndsAt.HasValue && record.VotingEndsAt.Value <= now)
-            {
-                record.Status = MediaCleanupStatus.Rejected;
-                record.ScheduledForDeletionAt = null;
-            }
         }
 
-        private MediaCleanupRequestViewModel ToViewModel(MediaCleanupRecord record, string userId, MediaCleanupSettings settings)
+        private MediaCleanupRequestViewModel ToViewModel(
+            MediaCleanupRecord record,
+            string userId,
+            MediaCleanupSettings settings,
+            IReadOnlyDictionary<string, string> voterDisplayNames)
         {
             if (record == null)
             {
@@ -835,7 +1294,21 @@ namespace Ombi.Core.Engine
                 CreatedAt = record.CreatedAt,
                 VotingEndsAt = record.VotingEndsAt,
                 ScheduledForDeletionAt = record.ScheduledForDeletionAt,
-                FailureReason = record.FailureReason
+                FailureReason = record.FailureReason,
+                Voters = voterDisplayNames == null
+                    ? new List<MediaCleanupVoterViewModel>()
+                    : record.Votes
+                        .OrderBy(x => x.Date)
+                        .Select(x => new MediaCleanupVoterViewModel
+                        {
+                            DisplayName = voterDisplayNames.TryGetValue(x.UserId, out var displayName)
+                                ? displayName
+                                : "Former or unknown user",
+                            Vote = x.Vote,
+                            Date = x.Date,
+                            IsRequester = record.OwnerUserIds.Contains(x.UserId)
+                        })
+                        .ToList()
             };
         }
 
@@ -921,9 +1394,8 @@ namespace Ombi.Core.Engine
 
         private static bool IsVoteable(MediaCleanupRecord record)
         {
-            return record.Status == MediaCleanupStatus.Voting ||
-                   record.Status == MediaCleanupStatus.PendingAdminApproval ||
-                   record.Status == MediaCleanupStatus.ScheduledForDeletion;
+            return record.Status == MediaCleanupStatus.Voting &&
+                   (!record.VotingEndsAt.HasValue || record.VotingEndsAt.Value > DateTime.UtcNow);
         }
 
         private static MediaCleanupRecord FindActive(MediaCleanupState state, RequestType requestType, int requestId)
@@ -939,6 +1411,56 @@ namespace Ombi.Core.Engine
         private static MediaCleanupActionResult Fail(string message, string id = null)
         {
             return new MediaCleanupActionResult { Result = false, Message = message, CleanupRequestId = id };
+        }
+
+        private sealed class PlexContentLookup
+        {
+            private readonly Dictionary<string, string> _movieByTmdb;
+            private readonly Dictionary<string, string> _movieByImdb;
+            private readonly Dictionary<string, string> _seriesByTvdb;
+            private readonly Dictionary<string, string> _seriesByTmdb;
+            private readonly Dictionary<string, string> _seriesByImdb;
+
+            public PlexContentLookup(IEnumerable<PlexServerContent> content)
+            {
+                var items = content?.Where(x => !string.IsNullOrWhiteSpace(x.Key)).ToList() ?? new List<PlexServerContent>();
+                _movieByTmdb = Build(items.Where(x => x.Type == MediaType.Movie), x => x.TheMovieDbId);
+                _movieByImdb = Build(items.Where(x => x.Type == MediaType.Movie), x => x.ImdbId);
+                _seriesByTvdb = Build(items.Where(x => x.Type == MediaType.Series), x => x.TvDbId);
+                _seriesByTmdb = Build(items.Where(x => x.Type == MediaType.Series), x => x.TheMovieDbId);
+                _seriesByImdb = Build(items.Where(x => x.Type == MediaType.Series), x => x.ImdbId);
+            }
+
+            public string FindMovie(int tmdbId, string imdbId)
+            {
+                if (tmdbId > 0 && _movieByTmdb.TryGetValue(tmdbId.ToString(), out var key))
+                {
+                    return key;
+                }
+                return !string.IsNullOrWhiteSpace(imdbId) && _movieByImdb.TryGetValue(imdbId, out key) ? key : null;
+            }
+
+            public string FindSeries(int tvdbId, int tmdbId, string imdbId)
+            {
+                if (tvdbId > 0 && _seriesByTvdb.TryGetValue(tvdbId.ToString(), out var key))
+                {
+                    return key;
+                }
+                if (tmdbId > 0 && _seriesByTmdb.TryGetValue(tmdbId.ToString(), out key))
+                {
+                    return key;
+                }
+                return !string.IsNullOrWhiteSpace(imdbId) && _seriesByImdb.TryGetValue(imdbId, out key) ? key : null;
+            }
+
+            private static Dictionary<string, string> Build(IEnumerable<PlexServerContent> content, Func<PlexServerContent, string> idSelector)
+            {
+                return content
+                    .Select(x => new { Id = idSelector(x), x.Key })
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Id))
+                    .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(x => x.Key, x => x.First().Key, StringComparer.OrdinalIgnoreCase);
+            }
         }
 
         private class CleanupTarget

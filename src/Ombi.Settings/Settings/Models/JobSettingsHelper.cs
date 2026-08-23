@@ -101,6 +101,11 @@ namespace Ombi.Settings.Settings.Models
             return ValidateCron(Get(s.MediaCleanup, Cron.Hourly(45)));
         }
 
+        public static string MediaCleanupVoteReminder(JobSettings s)
+        {
+            return ValidateCron(Get(s.MediaCleanupVoteReminder, Cron.Weekly(Helpers.DayOfWeek.Monday, 9)));
+        }
+
         private static string Get(string settings, string defaultCron)
         {
             return settings.HasValue() ? settings : defaultCron;

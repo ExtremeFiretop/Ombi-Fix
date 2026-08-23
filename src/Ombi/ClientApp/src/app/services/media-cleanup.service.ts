@@ -18,7 +18,34 @@ export class MediaCleanupService extends ServiceHelpers {
     }
 
     public getOverview(): Observable<IMediaCleanupOverview> {
-        return this.http.get<IMediaCleanupOverview>(this.url, { headers: this.headers });
+        // Do not hold the initial page render open on Plex playback-history calls.
+        return this.http.get<IMediaCleanupOverview>(`${this.url}?includeMetrics=false&includeLastPlayed=false`, { headers: this.headers });
+    }
+
+    public getMetricsOverview(): Observable<IMediaCleanupOverview> {
+        // Size information is supplemental and may depend on Radarr/Sonarr availability.
+        return this.http.get<IMediaCleanupOverview>(
+            `${this.url}?includeMetrics=true&includeLastPlayed=false`,
+            { headers: this.headers });
+    }
+
+    public getLastPlayedOverview(): Observable<IMediaCleanupOverview> {
+        // Playback is supplemental and may depend on Plex availability.
+        return this.http.get<IMediaCleanupOverview>(
+            `${this.url}?includeMetrics=false&includeLastPlayed=true`,
+            { headers: this.headers });
+    }
+
+    public getOverviewForRequest(requestType: RequestType, requestId: number): Observable<IMediaCleanupOverview> {
+        return this.http.get<IMediaCleanupOverview>(
+            `${this.url}?requestType=${requestType}&requestId=${requestId}&includeMetrics=false&includeLastPlayed=false`,
+            { headers: this.headers });
+    }
+
+    public getOverviewForMedia(requestType: RequestType, mediaId: number): Observable<IMediaCleanupOverview> {
+        return this.http.get<IMediaCleanupOverview>(
+            `${this.url}?requestType=${requestType}&mediaId=${mediaId}&includeMetrics=false&includeLastPlayed=false`,
+            { headers: this.headers });
     }
 
     public requestOwnRemoval(requestType: RequestType, requestId: number): Observable<IMediaCleanupActionResult> {

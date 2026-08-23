@@ -105,6 +105,39 @@
 						<button id="reportIssueBtn" *ngIf="issuesEnabled" class="action-btn action-btn--danger" (click)="issue()">
 							<i class="fas fa-exclamation-triangle"></i> {{ 'Requests.ReportIssue' | translate }}
 						</button>
+
+						<!-- Media Cleanup -->
+						<button *ngIf="cleanupItem?.canRequestOwnRemoval"
+							class="action-btn action-btn--danger"
+							[disabled]="cleanupBusy"
+							(click)="requestMediaRemoval()">
+							<i class="fas fa-trash-alt"></i> {{ cleanupOwnActionText() }}
+						</button>
+						<button *ngIf="showCommunityNominationAction()"
+							class="action-btn action-btn--secondary"
+							[disabled]="cleanupBusy || !cleanupItem?.canNominate"
+							[matTooltip]="cleanupNominationTooltip()"
+							(click)="nominateForCleanup()">
+							<i class="fas fa-vote-yea"></i> {{ cleanupNominationActionText() }}
+						</button>
+						<ng-container *ngIf="cleanupItem?.cleanup as cleanup">
+							<button *ngIf="cleanupItem?.canVote"
+								class="action-btn action-btn--secondary"
+								[disabled]="cleanupBusy"
+								(click)="voteOnCleanup(MediaCleanupVoteType.Keep)">
+								<i class="fas fa-thumbs-up"></i> Keep
+							</button>
+							<button *ngIf="cleanupItem?.canVote"
+								class="action-btn action-btn--danger"
+								[disabled]="cleanupBusy"
+								(click)="voteOnCleanup(MediaCleanupVoteType.Delete)">
+								<i class="fas fa-trash-alt"></i> Vote Remove
+							</button>
+							<span class="action-btn action-btn--warning cleanup-status-badge">
+								<i class="fas fa-broom"></i> {{ cleanupStatusText(cleanup.status) }}
+								<ng-container *ngIf="cleanup.deleteVotes || cleanup.keepVotes"> · {{ cleanup.deleteVotes }} remove / {{ cleanup.keepVotes }} keep</ng-container>
+							</span>
+						</ng-container>
 					</div>
 
 					<!-- Social Links -->

@@ -48,7 +48,9 @@ export class MediaCleanupSettingsComponent implements OnInit {
                 minimumMediaAgeDays: [settings.minimumMediaAgeDays, [Validators.required, Validators.min(0)]],
                 requesterCanVeto: [settings.requesterCanVeto],
                 deleteFiles: [settings.deleteFiles],
-                addImportExclusion: [settings.addImportExclusion]
+                addImportExclusion: [settings.addImportExclusion],
+                notifyManagersOnPendingApproval: [settings.notifyManagersOnPendingApproval],
+                notifyVotersOnPendingVotes: [settings.notifyVotersOnPendingVotes]
             });
         });
     }

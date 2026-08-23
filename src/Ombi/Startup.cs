@@ -190,6 +190,7 @@ namespace Ombi
             app.UseRateLimiter();
 
             app.UseAuthentication();
+            app.UseMiddleware<UserActivityMiddleware>();
             app.UseAuthorization();
 
 

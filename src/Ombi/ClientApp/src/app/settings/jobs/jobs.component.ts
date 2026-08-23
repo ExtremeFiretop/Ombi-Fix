@@ -62,6 +62,7 @@ export class JobsComponent implements OnInit {
                 mediaDatabaseRefresh:     [x.mediaDatabaseRefresh, Validators.required],
                 autoDeleteRequests:       [x.autoDeleteRequests, Validators.required],
                 mediaCleanup:             [x.mediaCleanup, Validators.required],
+                mediaCleanupVoteReminder: [x.mediaCleanupVoteReminder, Validators.required],
                 embyRecentlyAddedSync:    [x.embyRecentlyAddedSync, Validators.required],
                 plexWatchlistImport:      [x.plexWatchlistImport, Validators.required],
             });

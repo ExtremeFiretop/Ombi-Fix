@@ -21,5 +21,6 @@
         public string AutoDeleteRequests { get; set; }
         public string PlexWatchlistImport { get; set; }
         public string MediaCleanup { get; set; }
+        public string MediaCleanupVoteReminder { get; set; }
     }
 }

@@ -63,6 +63,26 @@
                 </mat-slide-toggle>
             </section>
 
+            <section class="settings-section">
+                <h3>Approval notifications</h3>
+                <mat-slide-toggle formControlName="notifyManagersOnPendingApproval">
+                    Email cleanup managers when an item needs approval
+                </mat-slide-toggle>
+                <p class="help-text">
+                    When Ombi email notifications are enabled, Admin, PowerUser, and ManageMediaCleanup users with an email address receive an email when an own-removal request or a successful community vote enters the approval queue.
+                </p>
+            </section>
+
+            <section class="settings-section">
+                <h3>Voting reminder emails</h3>
+                <mat-slide-toggle formControlName="notifyVotersOnPendingVotes">
+                    Email users a digest of cleanup votes they have not answered
+                </mat-slide-toggle>
+                <p class="help-text">
+                    The reminder runs on the <strong>Media Cleanup Vote Reminder</strong> schedule under Scheduled Tasks. Each eligible voter receives one digest containing only active community votes they have not voted on yet. The default schedule is weekly on Monday at 9:00 AM.
+                </p>
+            </section>
+
             <section class="settings-section danger-zone">
                 <h3>Deletion behavior</h3>
                 <mat-slide-toggle formControlName="deleteFiles">Delete media files in Radarr/Sonarr</mat-slide-toggle>

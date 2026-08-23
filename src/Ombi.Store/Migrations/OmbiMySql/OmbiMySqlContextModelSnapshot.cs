@@ -277,6 +277,9 @@ namespace Ombi.Store.Migrations.OmbiMySql
                     b.Property<DateTime?>("LastLoggedIn")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("LastActive")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("tinyint(1)");
 

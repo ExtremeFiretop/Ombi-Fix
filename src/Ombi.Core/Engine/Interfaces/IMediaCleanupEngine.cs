@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 using Ombi.Core.Models.MediaCleanup;
 using Ombi.Settings.Settings.Models;
@@ -7,7 +8,13 @@ namespace Ombi.Core.Engine.Interfaces
 {
     public interface IMediaCleanupEngine
     {
-        Task<MediaCleanupOverview> GetOverview();
+        Task<MediaCleanupOverview> GetOverview(
+            RequestType? requestType = null,
+            int? requestId = null,
+            int? mediaId = null,
+            bool includeMetrics = true,
+            bool includeLastPlayed = true,
+            CancellationToken cancellationToken = default);
         Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId);
         Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId);
         Task<MediaCleanupActionResult> Vote(string cleanupRequestId, MediaCleanupVoteType vote);

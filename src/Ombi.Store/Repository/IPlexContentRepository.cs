@@ -18,6 +18,7 @@ namespace Ombi.Store.Repository
         IEnumerable<PlexServerContent> GetWhereContentByCustom(Expression<Func<PlexServerContent, bool>> predicate);
         Task<PlexServerContent> GetFirstContentByCustom(Expression<Func<PlexServerContent, bool>> predicate);
         Task DeleteEpisode(PlexEpisode content);
+        Task DeleteContent(PlexServerContent content);
         void DeleteWithoutSave(PlexServerContent content);
         void DeleteWithoutSave(PlexEpisode content);
         Task UpdateRange(IEnumerable<PlexServerContent> existingContent);

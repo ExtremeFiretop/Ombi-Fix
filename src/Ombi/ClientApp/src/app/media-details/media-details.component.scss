@@ -282,6 +282,13 @@
         transform: translateY(0);
     }
 
+    &:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
     @media (max-width: 768px) {
         flex: 1;
         min-width: 140px;
@@ -329,6 +336,15 @@
 
     &:hover {
         background: rgba(244, 67, 54, 0.2);
+    }
+}
+
+.cleanup-status-badge {
+    cursor: default;
+
+    &:hover {
+        transform: none;
+        box-shadow: none;
     }
 }
 

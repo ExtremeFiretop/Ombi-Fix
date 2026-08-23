@@ -658,6 +658,7 @@ namespace Ombi.Controllers.V1
             j.EmbyRecentlyAddedSync = j.EmbyRecentlyAddedSync.HasValue() ? j.EmbyRecentlyAddedSync : JobSettingsHelper.EmbyRecentlyAddedSync(j);
             j.PlexWatchlistImport = j.PlexWatchlistImport.HasValue() ? j.PlexWatchlistImport : JobSettingsHelper.PlexWatchlistImport(j);
             j.MediaCleanup = j.MediaCleanup.HasValue() ? j.MediaCleanup : JobSettingsHelper.MediaCleanup(j);
+            j.MediaCleanupVoteReminder = j.MediaCleanupVoteReminder.HasValue() ? j.MediaCleanupVoteReminder : JobSettingsHelper.MediaCleanupVoteReminder(j);
 
             return j;
         }

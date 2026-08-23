@@ -207,7 +207,9 @@ namespace Ombi.Controllers.V1
                 //await _token.CreateToken(new Tokens() {Token = accessToken, User = user});
             }
 
-            user.LastLoggedIn = DateTime.UtcNow;
+            var loginTime = DateTime.UtcNow;
+            user.LastLoggedIn = loginTime;
+            user.LastActive = loginTime;
 
             await _userManager.UpdateAsync(user);
 

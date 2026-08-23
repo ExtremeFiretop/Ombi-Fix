@@ -17,6 +17,8 @@ namespace Ombi.Settings.Settings.Models
         public bool RequesterCanVeto { get; set; } = true;
         public bool DeleteFiles { get; set; } = true;
         public bool AddImportExclusion { get; set; }
+        public bool NotifyManagersOnPendingApproval { get; set; } = true;
+        public bool NotifyVotersOnPendingVotes { get; set; }
 
         public bool Enabled => OwnRequestRemoval != OwnRequestRemovalMode.Off || CommunityCleanup != CommunityCleanupMode.Off;
     }

@@ -67,7 +67,8 @@ namespace Ombi.Tests.Middlewear
             await _subject.Invoke(context);
 
             _mocker.Verify<IServiceProvider>(x => x.GetService(It.IsAny<Type>()), Times.Once);
-            umMock.Verify(x => x.UpdateAsync(user), Times.Once);
+            Assert.That(user.LastLoggedIn, Is.Null);
+            umMock.Verify(x => x.UpdateAsync(user), Times.Never);
         }
 
         [Test]

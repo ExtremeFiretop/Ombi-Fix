@@ -11,6 +11,7 @@ export interface IUser {
     userType: UserType;
     userAlias: string;
     lastLoggedIn: Date;
+    lastActive?: Date;
     hasLoggedIn: boolean;
     movieRequestLimit: number;
     episodeRequestLimit: number;

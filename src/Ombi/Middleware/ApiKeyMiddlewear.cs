@@ -78,9 +78,6 @@ namespace Ombi
                 var roles = await um.GetRolesAsync(user);
                 var principal = new GenericPrincipal(identity, roles.ToArray());
                 context.User = principal;
-                user.LastLoggedIn = DateTime.UtcNow;
-                await um.UpdateAsync(user);
-
                 await next.Invoke(context);
             }
         }

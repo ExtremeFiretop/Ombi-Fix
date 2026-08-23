@@ -19,6 +19,13 @@ namespace Ombi.Store.Entities
 
         public DateTime? LastLoggedIn { get; set; }
 
+        /// <summary>
+        /// The last time the user made an authenticated request to Ombi.
+        /// This is intentionally separate from LastLoggedIn so a long-lived session
+        /// does not hide when the user actually authenticated.
+        /// </summary>
+        public DateTime? LastActive { get; set; }
+
         public string Language { get; set; }
 
         /// <summary>

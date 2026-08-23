@@ -10,20 +10,20 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslateModule } from '@ngx-translate/core';
 import { CarouselModule } from 'primeng/carousel';
 import { SkeletonModule } from 'primeng/skeleton';
-import { ImageService, SearchV2Service, RequestService, MessageService, RadarrService, SettingsStateService } from '../../../services';
+import { ImageService, SearchV2Service, RequestService, MessageService, RadarrService, SettingsStateService, MediaCleanupService } from '../../../services';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer } from '@angular/platform-browser';
 import { ICrewViewModel, ISearchMovieResultV2 } from '../../../interfaces/ISearchMovieResultV2';
 import { MatDialog } from '@angular/material/dialog';
 import { YoutubeTrailerComponent } from '../shared/youtube-trailer.component';
 import { AuthService } from '../../../auth/auth.service';
-import { IMovieRequests, RequestType, IAdvancedData } from '../../../interfaces';
+import { IMovieRequests, RequestType, IAdvancedData, IMediaCleanupActionResult, IMediaCleanupItem, IMediaCleanupOverview, CommunityCleanupMode, MediaCleanupStatus, MediaCleanupVoteType, OwnRequestRemovalMode } from '../../../interfaces';
 import { DenyDialogComponent } from '../shared/deny-dialog/deny-dialog.component';
 import { NewIssueComponent } from '../shared/new-issue/new-issue.component';
 import { TranslateService } from '@ngx-translate/core';
 import { MovieAdvancedOptionsComponent } from './panels/movie-advanced-options/movie-advanced-options.component';
 import { RequestServiceV2 } from '../../../services/requestV2.service';
-import { firstValueFrom, forkJoin } from 'rxjs';
+import { firstValueFrom, forkJoin, Observable } from 'rxjs';
 import { AdminRequestDialogComponent } from '../../../shared/admin-request-dialog/admin-request-dialog.component';
 import { FeaturesFacade } from '../../../state/features/features.facade';
 import { TopBannerComponent } from '../shared/top-banner/top-banner.component';
@@ -86,6 +86,10 @@ export class MovieDetailsComponent implements OnInit {
 	public roleName4k = 'Request4KMovie';
 	public is4KEnabled = false;
 	public requestType = RequestType.movie;
+	public cleanupOverview?: IMediaCleanupOverview;
+	public cleanupItem?: IMediaCleanupItem;
+	public cleanupBusy = false;
+	public readonly MediaCleanupVoteType = MediaCleanupVoteType;
 	private theMovidDbId: number;
 	private imdbId: string;
 	private snapMovieId: string;
@@ -105,6 +109,7 @@ export class MovieDetailsComponent implements OnInit {
 		private settingsState: SettingsStateService,
 		private translate: TranslateService,
 		private featureFacade: FeaturesFacade,
+		private cleanupService?: MediaCleanupService,
 	) {
 		this.snapMovieId = this.route.snapshot.params.movieDbId;
 		this.route.params.subscribe(async (params: any) => {
@@ -152,6 +157,7 @@ export class MovieDetailsComponent implements OnInit {
 					this.movieRequest = await this.requestService.getMovieRequest(this.movie.requestId);
 				}
 				this.loadBanner();
+				void this.loadCleanupContext();
 			});
 		} else {
 			this.searchService.getFullMovieDetails(this.theMovidDbId).subscribe(async (x) => {
@@ -165,6 +171,7 @@ export class MovieDetailsComponent implements OnInit {
 					this.loadAdvancedInfo();
 				}
 				this.loadBanner();
+				void this.loadCleanupContext();
 			});
 		}
 	}
@@ -228,6 +235,133 @@ export class MovieDetailsComponent implements OnInit {
 			} else {
 				this.messageService.sendRequestEngineResultError(result);
 			}
+		}
+	}
+
+	public cleanupOwnActionText(): string {
+		return this.cleanupOverview?.settings?.ownRequestRemoval === OwnRequestRemovalMode.ImmediateDeletion
+			? 'Remove Media'
+			: 'Request Removal';
+	}
+
+	public showCommunityNominationAction(): boolean {
+	    return !!this.cleanupOverview &&
+	        !!this.cleanupItem &&
+	        !this.cleanupItem.cleanup &&
+	        this.cleanupOverview.canVote &&
+	        this.cleanupOverview.settings.communityCleanup !== CommunityCleanupMode.Off;
+	}
+
+	public cleanupNominationActionText(): string {
+	    if (this.cleanupItem?.canNominate) {
+	        return 'Nominate for Cleanup';
+	    }
+
+	    if (!this.cleanupItem?.communityAgeEligible) {
+	        const minimumDays = this.cleanupOverview?.settings?.minimumMediaAgeDays ?? 0;
+	        const availableSince = this.cleanupItem?.availableSince ? new Date(this.cleanupItem.availableSince) : undefined;
+	        if (minimumDays > 0 && availableSince && !Number.isNaN(availableSince.getTime())) {
+	            const eligibleAt = new Date(availableSince);
+	            eligibleAt.setDate(eligibleAt.getDate() + minimumDays);
+	            const remainingDays = Math.max(1, Math.ceil((eligibleAt.getTime() - Date.now()) / 86400000));
+	            return remainingDays === 1 ? 'Cleanup eligible tomorrow' : `Cleanup eligible in ${remainingDays} days`;
+	        }
+	        return minimumDays > 0 ? `Cleanup requires ${minimumDays} days available` : 'Not eligible for cleanup';
+	    }
+
+	    return 'Not eligible for cleanup';
+	}
+
+	public cleanupNominationTooltip(): string {
+	    if (this.cleanupItem?.canNominate) {
+	        return 'Start a community cleanup vote for this title.';
+	    }
+	    if (!this.cleanupItem?.communityAgeEligible) {
+	        const minimumDays = this.cleanupOverview?.settings?.minimumMediaAgeDays ?? 0;
+	        return minimumDays > 0
+	            ? `Community cleanup requires media to have been available for at least ${minimumDays} days.`
+	            : 'This title is not yet eligible for community cleanup.';
+	    }
+	    return 'This title is not currently eligible for community cleanup.';
+	}
+
+	public cleanupStatusText(status: MediaCleanupStatus): string {
+		switch (status) {
+			case MediaCleanupStatus.Voting: return 'Cleanup vote active';
+			case MediaCleanupStatus.PendingAdminApproval: return 'Cleanup awaiting approval';
+			case MediaCleanupStatus.ScheduledForDeletion: return 'Scheduled for removal';
+			case MediaCleanupStatus.Completed: return 'Media removed';
+			case MediaCleanupStatus.Rejected: return 'Cleanup rejected';
+			case MediaCleanupStatus.Failed: return 'Cleanup failed';
+			case MediaCleanupStatus.Cancelled: return 'Cleanup cancelled';
+			default: return 'Cleanup active';
+		}
+	}
+
+	public async requestMediaRemoval(): Promise<void> {
+		if (!this.cleanupService || !this.cleanupItem || !this.cleanupOverview) {
+			return;
+		}
+		const immediate = this.cleanupOverview.settings.ownRequestRemoval === OwnRequestRemovalMode.ImmediateDeletion;
+		if (immediate && !window.confirm(`Permanently remove ${this.movie.title} from the library? Media files will be deleted if that option is enabled.`)) {
+			return;
+		}
+		const result = await this.executeCleanup(this.cleanupService.requestOwnRemoval(RequestType.movie, this.cleanupItem.requestId));
+		if (immediate && result?.result) {
+			// The media and Ombi request were deleted synchronously. Clear the local details
+			// model immediately instead of leaving stale Requested/Available badges until reload.
+			this.movie.requested = false;
+			this.movie.approved = false;
+			this.movie.available = false;
+			this.movie.requestId = 0;
+			this.movie.plexUrl = '';
+			this.movie.embyUrl = '';
+			this.movie.jellyfinUrl = '';
+		}
+	}
+
+	public async nominateForCleanup(): Promise<void> {
+		if (!this.cleanupService || !this.cleanupItem) {
+			return;
+		}
+		await this.executeCleanup(this.cleanupService.nominate(RequestType.movie, this.cleanupItem.requestId));
+	}
+
+	public async voteOnCleanup(vote: MediaCleanupVoteType): Promise<void> {
+		if (!this.cleanupService || !this.cleanupItem?.cleanup) {
+			return;
+		}
+		await this.executeCleanup(this.cleanupService.vote(this.cleanupItem.cleanup.id, vote));
+	}
+
+	private async loadCleanupContext(): Promise<void> {
+		if (!this.cleanupService || !this.movie?.available || !this.movie?.id) {
+			this.cleanupOverview = undefined;
+			this.cleanupItem = undefined;
+			return;
+		}
+		try {
+			this.cleanupOverview = await firstValueFrom(this.cleanupService.getOverviewForMedia(RequestType.movie, this.movie.id));
+			this.cleanupItem = this.cleanupOverview.items.find(x => x.requestType === RequestType.movie);
+		} catch {
+			// Cleanup actions are optional on the media details page. Do not fail media loading if cleanup is unavailable.
+			this.cleanupOverview = undefined;
+			this.cleanupItem = undefined;
+		}
+	}
+
+	private async executeCleanup(request: Observable<IMediaCleanupActionResult>): Promise<IMediaCleanupActionResult | undefined> {
+		this.cleanupBusy = true;
+		try {
+			const result = await firstValueFrom(request);
+			this.messageService.send(result.message);
+			await this.loadCleanupContext();
+			return result;
+		} catch (error: any) {
+			this.messageService.send(error?.error?.message ?? 'Media cleanup action failed.');
+			return undefined;
+		} finally {
+			this.cleanupBusy = false;
 		}
 	}
 

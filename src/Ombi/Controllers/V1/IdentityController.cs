@@ -367,6 +367,7 @@ namespace Ombi.Controllers.V1
                 UserType = (Core.Models.UserType)(int)user.UserType,
                 Claims = new List<ClaimCheckboxes>(),
                 LastLoggedIn = user.LastLoggedIn,
+                LastActive = user.LastActive,
                 HasLoggedIn = user.LastLoggedIn.HasValue,
                 EpisodeRequestLimit = user.EpisodeRequestLimit ?? 0,
                 MovieRequestLimit = user.MovieRequestLimit ?? 0,

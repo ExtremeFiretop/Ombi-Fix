@@ -30,6 +30,8 @@ namespace Ombi.Core.Models.MediaCleanup
         public bool CanCancel { get; set; }
         public bool CommunityAgeEligible { get; set; }
         public DateTime? AvailableSince { get; set; }
+        public DateTime? LastPlayedAt { get; set; }
+        public bool LastPlayedKnown { get; set; }
         public long SizeOnDisk { get; set; }
         public MediaCleanupRequestViewModel Cleanup { get; set; }
     }
@@ -47,6 +49,15 @@ namespace Ombi.Core.Models.MediaCleanup
         public DateTime? VotingEndsAt { get; set; }
         public DateTime? ScheduledForDeletionAt { get; set; }
         public string FailureReason { get; set; }
+        public List<MediaCleanupVoterViewModel> Voters { get; set; } = new List<MediaCleanupVoterViewModel>();
+    }
+
+    public class MediaCleanupVoterViewModel
+    {
+        public string DisplayName { get; set; }
+        public MediaCleanupVoteType Vote { get; set; }
+        public DateTime Date { get; set; }
+        public bool IsRequester { get; set; }
     }
 
     public class MediaCleanupActionResult

@@ -154,6 +154,31 @@ namespace Ombi.Store.Repository
             await InternalSaveChanges();
         }
 
+        public async Task DeleteContent(PlexServerContent content)
+        {
+            if (content == null)
+            {
+                return;
+            }
+
+            // Seasons use a restrictive FK to PlexServerContent, so remove them explicitly.
+            // Episodes currently cascade, but removing them explicitly keeps this operation safe
+            // if the relationship behavior changes in a future migration.
+            if (content.Seasons?.Any() == true)
+            {
+                Db.PlexSeasonsContent.RemoveRange(content.Seasons);
+            }
+
+            var episodes = content.Episodes?.OfType<PlexEpisode>().ToList();
+            if (episodes?.Count > 0)
+            {
+                Db.PlexEpisode.RemoveRange(episodes);
+            }
+
+            Db.PlexServerContent.Remove(content);
+            await InternalSaveChanges();
+        }
+
         public async Task<PlexEpisode> GetEpisodeByKey(string key)
         {
             return await Db.PlexEpisode.FirstOrDefaultAsync(x => x.Key == key);

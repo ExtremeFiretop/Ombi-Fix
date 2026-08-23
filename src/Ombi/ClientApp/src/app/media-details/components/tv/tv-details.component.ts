@@ -11,18 +11,18 @@ import { MatExpansionModule } from "@angular/material/expansion";
 import { TranslateModule } from "@ngx-translate/core";
 import { CarouselModule } from "primeng/carousel";
 import { SkeletonModule } from "primeng/skeleton";
-import { SearchV2Service, MessageService, RequestService, SonarrService, SettingsStateService } from "../../../services";
+import { SearchV2Service, MessageService, RequestService, SonarrService, SettingsStateService, MediaCleanupService } from "../../../services";
 import { ActivatedRoute } from "@angular/router";
 import { DomSanitizer } from "@angular/platform-browser";
 import { ISearchTvResultV2 } from "../../../interfaces/ISearchTvResultV2";
 import { MatDialog } from "@angular/material/dialog";
 import { YoutubeTrailerComponent } from "../shared/youtube-trailer.component";
-import { IAdvancedData, IChildRequests, ITvRequests, RequestType } from "../../../interfaces";
+import { IAdvancedData, IChildRequests, ITvRequests, RequestType, IMediaCleanupActionResult, IMediaCleanupItem, IMediaCleanupOverview, CommunityCleanupMode, MediaCleanupStatus, MediaCleanupVoteType, OwnRequestRemovalMode } from "../../../interfaces";
 import { AuthService } from "../../../auth/auth.service";
 import { NewIssueComponent } from "../shared/new-issue/new-issue.component";
 import { TvAdvancedOptionsComponent } from "./panels/tv-advanced-options/tv-advanced-options.component";
 import { RequestServiceV2 } from "../../../services/requestV2.service";
-import { forkJoin } from "rxjs";
+import { firstValueFrom, forkJoin, Observable } from "rxjs";
 import { SonarrFacade } from "app/state/sonarr";
 import { TopBannerComponent } from "../shared/top-banner/top-banner.component";
 import { SocialIconsComponent } from "../shared/social-icons/social-icons.component";
@@ -79,6 +79,10 @@ export class TvDetailsComponent implements OnInit {
     public showAdvanced: boolean; // Set on the UI
     public requestType = RequestType.tvShow;
     public issuesEnabled: boolean;
+    public cleanupOverview?: IMediaCleanupOverview;
+    public cleanupItem?: IMediaCleanupItem;
+    public cleanupBusy = false;
+    public readonly MediaCleanupVoteType = MediaCleanupVoteType;
 
     private tvdbId: number;
 
@@ -91,7 +95,8 @@ export class TvDetailsComponent implements OnInit {
         private auth: AuthService,
         private sonarrService: SonarrService,
         private sonarrFacade: SonarrFacade,
-        private settingsState: SettingsStateService) {
+        private settingsState: SettingsStateService,
+        private cleanupService?: MediaCleanupService) {
         this.route.params.subscribe((params: any) => {
             this.tvdbId = params.tvdbId;
             this.fromSearch = params.search;
@@ -126,6 +131,8 @@ export class TvDetailsComponent implements OnInit {
             this.loadAdvancedInfo();
         }
 
+        void this.loadCleanupContext();
+
         // const tvBanner = await this.imageService.getTvBanner(this.tvdbId).toPromise();
         if (this.tv.banner && this.tv.banner !== null && this.tv.banner !== undefined) {
             this.tv.background = this.sanitizer.bypassSecurityTrustStyle("url(https://image.tmdb.org/t/p/original" + this.tv.banner + ")");
@@ -138,6 +145,143 @@ export class TvDetailsComponent implements OnInit {
         const grid = document.getElementById("requests-grid");
         if (grid) {
             grid.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    }
+
+    public cleanupOwnActionText(): string {
+        return this.cleanupOverview?.settings?.ownRequestRemoval === OwnRequestRemovalMode.ImmediateDeletion
+            ? "Remove Media"
+            : "Request Removal";
+    }
+
+    public showCommunityNominationAction(): boolean {
+        return !!this.cleanupOverview &&
+            !!this.cleanupItem &&
+            !this.cleanupItem.cleanup &&
+            this.cleanupOverview.canVote &&
+            this.cleanupOverview.settings.communityCleanup !== CommunityCleanupMode.Off;
+    }
+
+    public cleanupNominationActionText(): string {
+        if (this.cleanupItem?.canNominate) {
+            return 'Nominate for Cleanup';
+        }
+
+        if (!this.cleanupItem?.communityAgeEligible) {
+            const minimumDays = this.cleanupOverview?.settings?.minimumMediaAgeDays ?? 0;
+            const availableSince = this.cleanupItem?.availableSince ? new Date(this.cleanupItem.availableSince) : undefined;
+            if (minimumDays > 0 && availableSince && !Number.isNaN(availableSince.getTime())) {
+                const eligibleAt = new Date(availableSince);
+                eligibleAt.setDate(eligibleAt.getDate() + minimumDays);
+                const remainingDays = Math.max(1, Math.ceil((eligibleAt.getTime() - Date.now()) / 86400000));
+                return remainingDays === 1 ? 'Cleanup eligible tomorrow' : `Cleanup eligible in ${remainingDays} days`;
+            }
+            return minimumDays > 0 ? `Cleanup requires ${minimumDays} days available` : 'Not eligible for cleanup';
+        }
+
+        return 'Not eligible for cleanup';
+    }
+
+    public cleanupNominationTooltip(): string {
+        if (this.cleanupItem?.canNominate) {
+            return 'Start a community cleanup vote for this title.';
+        }
+        if (!this.cleanupItem?.communityAgeEligible) {
+            const minimumDays = this.cleanupOverview?.settings?.minimumMediaAgeDays ?? 0;
+            return minimumDays > 0
+                ? `Community cleanup requires media to have been available for at least ${minimumDays} days.`
+                : 'This title is not yet eligible for community cleanup.';
+        }
+        return 'This title is not currently eligible for community cleanup.';
+    }
+
+    public cleanupStatusText(status: MediaCleanupStatus): string {
+        switch (status) {
+            case MediaCleanupStatus.Voting: return "Cleanup vote active";
+            case MediaCleanupStatus.PendingAdminApproval: return "Cleanup awaiting approval";
+            case MediaCleanupStatus.ScheduledForDeletion: return "Scheduled for removal";
+            case MediaCleanupStatus.Completed: return "Media removed";
+            case MediaCleanupStatus.Rejected: return "Cleanup rejected";
+            case MediaCleanupStatus.Failed: return "Cleanup failed";
+            case MediaCleanupStatus.Cancelled: return "Cleanup cancelled";
+            default: return "Cleanup active";
+        }
+    }
+
+    public async requestMediaRemoval(): Promise<void> {
+        if (!this.cleanupService || !this.cleanupItem || !this.cleanupOverview) {
+            return;
+        }
+        const immediate = this.cleanupOverview.settings.ownRequestRemoval === OwnRequestRemovalMode.ImmediateDeletion;
+        if (immediate && !window.confirm(`Permanently remove ${this.tv.title} from the library? Media files will be deleted if that option is enabled.`)) {
+            return;
+        }
+        const result = await this.executeCleanup(this.cleanupService.requestOwnRemoval(RequestType.tvShow, this.cleanupItem.requestId));
+        if (immediate && result?.result) {
+            // Keep the already-open details page in sync with the successful server-side
+            // deletion so Requested/Available does not linger until a hard refresh.
+            this.tv.requested = false;
+            this.tv.approved = false;
+            this.tv.available = false;
+            this.tv.fullyAvailable = false;
+            this.tv.partlyAvailable = false;
+            this.tv.requestId = 0;
+            this.tv.plexUrl = '';
+            this.tv.embyUrl = '';
+            this.tv.jellyfinUrl = '';
+            for (const season of this.tv.seasonRequests ?? []) {
+                season.seasonAvailable = false;
+                for (const episode of season.episodes ?? []) {
+                    episode.requested = false;
+                    episode.approved = false;
+                    episode.available = false;
+                }
+            }
+        }
+    }
+
+    public async nominateForCleanup(): Promise<void> {
+        if (!this.cleanupService || !this.cleanupItem) {
+            return;
+        }
+        await this.executeCleanup(this.cleanupService.nominate(RequestType.tvShow, this.cleanupItem.requestId));
+    }
+
+    public async voteOnCleanup(vote: MediaCleanupVoteType): Promise<void> {
+        if (!this.cleanupService || !this.cleanupItem?.cleanup) {
+            return;
+        }
+        await this.executeCleanup(this.cleanupService.vote(this.cleanupItem.cleanup.id, vote));
+    }
+
+    private async loadCleanupContext(): Promise<void> {
+        if (!this.cleanupService || !this.tv?.fullyAvailable || !this.tv?.id) {
+            this.cleanupOverview = undefined;
+            this.cleanupItem = undefined;
+            return;
+        }
+        try {
+            this.cleanupOverview = await firstValueFrom(this.cleanupService.getOverviewForMedia(RequestType.tvShow, this.tv.id));
+            this.cleanupItem = this.cleanupOverview.items.find(x => x.requestType === RequestType.tvShow);
+        } catch {
+            // Cleanup actions are optional on the media details page. Do not fail media loading if cleanup is unavailable.
+            this.cleanupOverview = undefined;
+            this.cleanupItem = undefined;
+        }
+    }
+
+    private async executeCleanup(request: Observable<IMediaCleanupActionResult>): Promise<IMediaCleanupActionResult | undefined> {
+        this.cleanupBusy = true;
+        try {
+            const result = await firstValueFrom(request);
+            this.messageService.send(result.message);
+            await this.loadCleanupContext();
+            return result;
+        } catch (error: any) {
+            this.messageService.send(error?.error?.message ?? "Media cleanup action failed.");
+            return undefined;
+        } finally {
+            this.cleanupBusy = false;
         }
     }
 

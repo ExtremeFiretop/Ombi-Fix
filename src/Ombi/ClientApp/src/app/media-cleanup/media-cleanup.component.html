@@ -31,12 +31,211 @@
             </span>
         </div>
 
+        <ng-template #voterDetails let-item>
+            <ng-container *ngIf="item.cleanup as cleanup">
+                <div class="voter-controls"
+                     *ngIf="item.canManage && cleanup.origin === MediaCleanupOrigin.Community && cleanup.voters?.length">
+                    <button mat-button type="button" (click)="toggleVoters(item)">
+                        <mat-icon>groups</mat-icon> {{ showVoters(item) ? 'Hide voters' : 'View voters' }}
+                    </button>
+                </div>
+
+                <div class="voter-breakdown"
+                     *ngIf="item.canManage && cleanup.origin === MediaCleanupOrigin.Community && cleanup.voters?.length && showVoters(item)">
+                    <div class="voter-column remove-voters">
+                        <strong>Remove — {{ cleanup.deleteVotes }}</strong>
+                        <div class="voter-entry" *ngFor="let voter of removeVoters(cleanup)">
+                            <span>{{ voter.displayName }} <span class="requester-marker" *ngIf="voter.isRequester">REQUESTER</span></span>
+                            <span class="voter-date">{{ voter.date | date:'short' }}</span>
+                        </div>
+                        <span class="metadata" *ngIf="!removeVoters(cleanup).length">No remove votes.</span>
+                    </div>
+                    <div class="voter-column keep-voters">
+                        <strong>Keep — {{ cleanup.keepVotes }}</strong>
+                        <div class="voter-entry" *ngFor="let voter of keepVoters(cleanup)">
+                            <span>{{ voter.displayName }} <span class="requester-marker" *ngIf="voter.isRequester">REQUESTER<span *ngIf="cleanup.requesterVeto"> · VETO</span></span></span>
+                            <span class="voter-date">{{ voter.date | date:'short' }}</span>
+                        </div>
+                        <span class="metadata" *ngIf="!keepVoters(cleanup).length">No keep votes.</span>
+                    </div>
+                </div>
+            </ng-container>
+        </ng-template>
+
+        <section class="attention-dashboard" *ngIf="hasDashboardItems">
+            <div class="dashboard-title">
+                <div>
+                    <h2>Needs your attention</h2>
+                    <p>Track active votes, review approvals, and stop scheduled removals during the grace period.</p>
+                </div>
+                <div class="dashboard-counts">
+                    <span *ngIf="activeVoteItems.length">{{ activeVoteItems.length }} active vote{{ activeVoteItems.length === 1 ? '' : 's' }}</span>
+                    <span *ngIf="pendingApprovalItems.length">{{ pendingApprovalItems.length }} approval{{ pendingApprovalItems.length === 1 ? '' : 's' }} pending</span>
+                    <span *ngIf="scheduledRemovalItems.length">{{ scheduledRemovalItems.length }} removal{{ scheduledRemovalItems.length === 1 ? '' : 's' }} scheduled</span>
+                </div>
+            </div>
+
+            <section class="attention-queue" *ngIf="activeVoteItems.length">
+                <div class="queue-heading">
+                    <div>
+                        <h3>Community voting</h3>
+                        <p>Active nominations stay here until voting closes. You can change your vote while voting is open.</p>
+                    </div>
+                    <div class="queue-nav" *ngIf="activeVoteItems.length > 1">
+                        <button mat-icon-button type="button" aria-label="Previous cleanup vote" (click)="scrollQueue(voteQueue, -1)"><mat-icon>chevron_left</mat-icon></button>
+                        <button mat-icon-button type="button" aria-label="Next cleanup vote" (click)="scrollQueue(voteQueue, 1)"><mat-icon>chevron_right</mat-icon></button>
+                    </div>
+                </div>
+                <div class="attention-track" #voteQueue>
+                    <mat-card class="attention-card vote-card" *ngFor="let item of activeVoteItems">
+                        <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
+                        <mat-card-content>
+                            <span class="attention-label"><mat-icon>how_to_vote</mat-icon> {{ item.cleanup?.myVote === undefined || item.cleanup?.myVote === null ? 'Vote needed' : 'Voting active' }}</span>
+                            <h4>{{ item.title }}</h4>
+                            <p class="metadata">{{ mediaTypeText(item.requestType) }}<span *ngIf="item.requestedBy"> · Requested by {{ item.requestedBy }}</span></p>
+                            <p class="metadata" *ngIf="item.cleanup as cleanup">{{ cleanup.deleteVotes }} remove · {{ cleanup.keepVotes }} keep</p>
+                            <p class="metadata" *ngIf="item.cleanup?.myVote !== undefined && item.cleanup?.myVote !== null">
+                                Your vote: {{ item.cleanup?.myVote === MediaCleanupVoteType.Keep ? 'Keep' : 'Remove' }}
+                            </p>
+                            <p class="metadata" *ngIf="item.cleanup?.myVote === undefined || item.cleanup?.myVote === null">You have not voted yet.</p>
+                            <p class="metadata" *ngIf="item.cleanup?.votingEndsAt">Voting ends {{ item.cleanup?.votingEndsAt | date:'medium' }}</p>
+                            <ng-container *ngTemplateOutlet="voterDetails; context: { $implicit: item }"></ng-container>
+                            <div class="actions">
+                                <button mat-raised-button type="button"
+                                        [class.selected-vote]="item.cleanup?.myVote === MediaCleanupVoteType.Keep"
+                                        [disabled]="isItemBusy(item)"
+                                        (click)="vote(item, MediaCleanupVoteType.Keep)">
+                                    <mat-icon>thumb_up</mat-icon> Keep
+                                </button>
+                                <button mat-raised-button color="warn" type="button"
+                                        [class.selected-vote]="item.cleanup?.myVote === MediaCleanupVoteType.Delete"
+                                        [disabled]="isItemBusy(item)"
+                                        (click)="vote(item, MediaCleanupVoteType.Delete)">
+                                    <mat-icon>delete_outline</mat-icon> Remove
+                                </button>
+                            </div>
+                        </mat-card-content>
+                    </mat-card>
+                </div>
+            </section>
+
+            <section class="attention-queue" *ngIf="pendingApprovalItems.length">
+                <div class="queue-heading">
+                    <div>
+                        <h3>Pending approval</h3>
+                        <p>These cleanup requests are waiting for a cleanup manager or administrator.</p>
+                    </div>
+                    <div class="queue-nav" *ngIf="pendingApprovalItems.length > 1">
+                        <button mat-icon-button type="button" aria-label="Previous cleanup approval" (click)="scrollQueue(approvalQueue, -1)"><mat-icon>chevron_left</mat-icon></button>
+                        <button mat-icon-button type="button" aria-label="Next cleanup approval" (click)="scrollQueue(approvalQueue, 1)"><mat-icon>chevron_right</mat-icon></button>
+                    </div>
+                </div>
+                <div class="attention-track" #approvalQueue>
+                    <mat-card class="attention-card approval-card" *ngFor="let item of pendingApprovalItems">
+                        <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
+                        <mat-card-content>
+                            <span class="attention-label"><mat-icon>approval</mat-icon> Approval required</span>
+                            <h4>{{ item.title }}</h4>
+                            <p class="metadata">{{ item.cleanup?.origin === MediaCleanupOrigin.OwnRequest ? 'Personal removal request' : 'Community vote passed' }}</p>
+                            <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
+                            <p class="metadata" *ngIf="item.cleanup?.origin === MediaCleanupOrigin.Community">{{ item.cleanup?.deleteVotes }} remove · {{ item.cleanup?.keepVotes }} keep</p>
+                            <ng-container *ngTemplateOutlet="voterDetails; context: { $implicit: item }"></ng-container>
+                            <div class="actions">
+                                <button mat-raised-button color="warn" type="button" [disabled]="isItemBusy(item)" (click)="approve(item)">
+                                    <mat-icon>check_circle</mat-icon> Approve removal
+                                </button>
+                                <button mat-stroked-button type="button" [disabled]="isItemBusy(item)" (click)="reject(item)">
+                                    <mat-icon>cancel</mat-icon> Reject
+                                </button>
+                            </div>
+                        </mat-card-content>
+                    </mat-card>
+                </div>
+            </section>
+
+            <section class="attention-queue" *ngIf="scheduledRemovalItems.length">
+                <div class="queue-heading">
+                    <div>
+                        <h3>Scheduled for removal</h3>
+                        <p>These items passed cleanup and are in the grace period. Cancel here before the scheduled deletion time to keep the media.</p>
+                    </div>
+                    <div class="queue-nav" *ngIf="scheduledRemovalItems.length > 1">
+                        <button mat-icon-button type="button" aria-label="Previous scheduled removal" (click)="scrollQueue(scheduledQueue, -1)"><mat-icon>chevron_left</mat-icon></button>
+                        <button mat-icon-button type="button" aria-label="Next scheduled removal" (click)="scrollQueue(scheduledQueue, 1)"><mat-icon>chevron_right</mat-icon></button>
+                    </div>
+                </div>
+                <div class="attention-track" #scheduledQueue>
+                    <mat-card class="attention-card scheduled-card" *ngFor="let item of scheduledRemovalItems">
+                        <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
+                        <mat-card-content>
+                            <span class="attention-label grace-label"><mat-icon>schedule</mat-icon> Grace period</span>
+                            <h4>{{ item.title }}</h4>
+                            <p class="metadata">{{ item.cleanup?.origin === MediaCleanupOrigin.Community ? 'Community cleanup passed' : 'Personal removal approved' }}</p>
+                            <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
+                            <p class="metadata" *ngIf="item.cleanup?.origin === MediaCleanupOrigin.Community">{{ item.cleanup?.deleteVotes }} remove · {{ item.cleanup?.keepVotes }} keep</p>
+                            <ng-container *ngTemplateOutlet="voterDetails; context: { $implicit: item }"></ng-container>
+                            <p class="scheduled-countdown" *ngIf="item.cleanup?.scheduledForDeletionAt">{{ scheduledRemovalCountdown(item.cleanup?.scheduledForDeletionAt) }}</p>
+                            <p class="metadata danger" *ngIf="item.cleanup?.scheduledForDeletionAt">Scheduled {{ item.cleanup?.scheduledForDeletionAt | date:'medium' }}</p>
+                            <div class="actions">
+                                <button mat-raised-button type="button" [disabled]="isItemBusy(item)" (click)="cancel(item)">
+                                    <mat-icon>undo</mat-icon> Cancel deletion
+                                </button>
+                            </div>
+                        </mat-card-content>
+                    </mat-card>
+                </div>
+            </section>
+        </section>
+
+        <div class="cleanup-toolbar" *ngIf="showViewToggle || showMediaTypeToggle || showSortControl">
+            <mat-button-toggle-group *ngIf="showViewToggle" [(value)]="viewMode" aria-label="Media cleanup ownership view">
+                <mat-button-toggle value="all">All Media ({{ overview.items.length }})</mat-button-toggle>
+                <mat-button-toggle value="mine">My Media ({{ myMediaCount }})</mat-button-toggle>
+            </mat-button-toggle-group>
+
+            <mat-button-toggle-group *ngIf="showMediaTypeToggle" [(value)]="mediaTypeMode" aria-label="Media cleanup type filter">
+                <mat-button-toggle value="all">All Types ({{ scopedMediaCount }})</mat-button-toggle>
+                <mat-button-toggle value="movie">Movies ({{ movieMediaCount }})</mat-button-toggle>
+                <mat-button-toggle value="tv">TV ({{ tvMediaCount }})</mat-button-toggle>
+            </mat-button-toggle-group>
+
+            <div class="sort-controls" *ngIf="showSortControl">
+                <mat-form-field appearance="outline">
+                    <mat-label>Sort by</mat-label>
+                    <mat-select [(value)]="sortMode" (selectionChange)="onSortModeChanged()" aria-label="Media cleanup sort field">
+                        <mat-option value="default">Default</mat-option>
+                        <mat-option value="size">Media size</mat-option>
+                        <mat-option value="availableSince">Available since</mat-option>
+                        <mat-option value="lastPlayed">Last played</mat-option>
+                        <mat-option value="title">Title</mat-option>
+                    </mat-select>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" *ngIf="sortMode !== 'default'">
+                    <mat-label>Order</mat-label>
+                    <mat-select [(value)]="sortDirection" aria-label="Media cleanup sort direction">
+                        <mat-option value="asc">{{ sortAscendingLabel() }}</mat-option>
+                        <mat-option value="desc">{{ sortDescendingLabel() }}</mat-option>
+                    </mat-select>
+                </mat-form-field>
+
+                <span class="sort-loading" *ngIf="sortSupplementalLoading">
+                    <mat-spinner diameter="18"></mat-spinner>
+                    {{ sortSupplementalLoadingText }}
+                </span>
+            </div>
+        </div>
+
         <div *ngIf="overview.items.length === 0" class="empty-state">
             No available Ombi requests are currently eligible for cleanup.
         </div>
 
+        <div *ngIf="overview.items.length > 0 && filteredItems.length === 0" class="empty-state">
+            No media is available in this view.
+        </div>
+
         <div class="cleanup-grid">
-            <mat-card class="cleanup-card" *ngFor="let item of overview.items">
+            <mat-card class="cleanup-card" *ngFor="let item of filteredItems">
                 <div class="poster-wrap" *ngIf="posterUrl(item.posterPath)">
                     <img [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
                 </div>
@@ -44,26 +243,34 @@
                     <div class="title-row">
                         <div>
                             <h2>{{ item.title }}</h2>
-                            <span class="muted">{{ mediaTypeText(item.requestType) }} · {{ formatBytes(item.sizeOnDisk) }}</span>
+                            <span class="muted">
+                                {{ mediaTypeText(item.requestType) }} · {{ loadingMetrics && !item.sizeOnDisk ? 'Loading size…' : formatBytes(item.sizeOnDisk) }}
+                            </span>
                         </div>
                         <span class="owner-chip" *ngIf="item.ownedByCurrentUser">Your request</span>
                     </div>
 
                     <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
                     <p class="metadata" *ngIf="item.availableSince">Available since {{ item.availableSince | date:'mediumDate' }}</p>
+                    <p class="metadata" *ngIf="item.lastPlayedKnown">
+                        Last played {{ item.lastPlayedAt ? (item.lastPlayedAt | date:'medium') : 'Never' }}
+                    </p>
+                    <p class="metadata" *ngIf="!item.lastPlayedKnown">
+                        Last played {{ loadingLastPlayed ? 'Loading…' : 'Unknown' }}
+                    </p>
 
                     <ng-container *ngIf="!item.cleanup">
                         <div class="actions">
                             <button mat-raised-button color="warn" type="button"
                                     *ngIf="item.canRequestOwnRemoval"
-                                    [disabled]="!!busyId"
+                                    [disabled]="isItemBusy(item)"
                                     (click)="requestOwnRemoval(item)">
                                 <mat-icon>delete_outline</mat-icon> {{ ownActionText() }}
                             </button>
 
                             <button mat-stroked-button type="button"
                                     *ngIf="item.canNominate"
-                                    [disabled]="!!busyId"
+                                    [disabled]="isItemBusy(item)"
                                     (click)="nominate(item)">
                                 <mat-icon>how_to_vote</mat-icon> Nominate for cleanup
                             </button>
@@ -90,32 +297,36 @@
                             Scheduled for removal {{ cleanup.scheduledForDeletionAt | date:'medium' }}
                         </p>
 
+                        <ng-container *ngTemplateOutlet="voterDetails; context: { $implicit: item }"></ng-container>
+
                         <div class="actions" *ngIf="item.canVote">
                             <button mat-stroked-button type="button"
                                     [class.selected-vote]="cleanup.myVote === MediaCleanupVoteType.Keep"
-                                    [disabled]="!!busyId"
+                                    [disabled]="isItemBusy(item)"
                                     (click)="vote(item, MediaCleanupVoteType.Keep)">
                                 <mat-icon>thumb_up</mat-icon> Keep
                             </button>
                             <button mat-stroked-button color="warn" type="button"
                                     [class.selected-vote]="cleanup.myVote === MediaCleanupVoteType.Delete"
-                                    [disabled]="!!busyId"
+                                    [disabled]="isItemBusy(item)"
                                     (click)="vote(item, MediaCleanupVoteType.Delete)">
                                 <mat-icon>delete_outline</mat-icon> Remove
                             </button>
                         </div>
 
                         <div class="actions" *ngIf="canApprove(item)">
-                            <button mat-raised-button color="warn" type="button" [disabled]="!!busyId" (click)="approve(item)">
+                            <button mat-raised-button color="warn" type="button" [disabled]="isItemBusy(item)" (click)="approve(item)">
                                 Approve removal
                             </button>
-                            <button mat-stroked-button type="button" [disabled]="!!busyId" (click)="reject(item)">
+                            <button mat-stroked-button type="button" [disabled]="isItemBusy(item)" (click)="reject(item)">
                                 Reject
                             </button>
                         </div>
 
                         <div class="actions" *ngIf="item.canCancel">
-                            <button mat-button type="button" [disabled]="!!busyId" (click)="cancel(item)">Cancel cleanup</button>
+                            <button mat-button type="button" [disabled]="isItemBusy(item)" (click)="cancel(item)">
+                                {{ cleanup.status === MediaCleanupStatus.ScheduledForDeletion ? 'Cancel deletion' : 'Cancel cleanup' }}
+                            </button>
                         </div>
                     </ng-container>
                 </mat-card-content>

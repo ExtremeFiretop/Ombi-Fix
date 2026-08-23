@@ -36,6 +36,40 @@
     margin: .75rem 0 1.25rem;
 }
 
+.cleanup-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: .75rem;
+    margin: -.25rem 0 1.25rem;
+}
+
+.cleanup-toolbar mat-button-toggle-group {
+    max-width: 100%;
+}
+
+.sort-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .65rem;
+}
+
+.sort-controls mat-form-field {
+    width: 180px;
+    max-width: 100%;
+}
+
+.sort-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-height: 40px;
+    font-size: .85rem;
+    opacity: .72;
+}
+
 .notice-card {
     margin-bottom: 1rem;
 }
@@ -133,5 +167,200 @@
     .poster-wrap,
     .poster-wrap img {
         min-height: 123px;
+    }
+}
+
+.attention-dashboard {
+    margin: 1rem 0 1.5rem;
+    padding: 1rem;
+    border: 1px solid rgba(127, 127, 127, .28);
+    border-radius: 12px;
+    background: rgba(127, 127, 127, .08);
+}
+
+.dashboard-title,
+.queue-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.dashboard-title h2,
+.queue-heading h3,
+.attention-card h4 {
+    margin: 0;
+}
+
+.dashboard-title p,
+.queue-heading p {
+    margin: .25rem 0 0;
+    opacity: .72;
+}
+
+.dashboard-counts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .5rem;
+}
+
+.dashboard-counts span,
+.attention-label {
+    border-radius: 999px;
+    padding: .3rem .65rem;
+    background: rgba(127, 127, 127, .18);
+    font-size: .8rem;
+    white-space: nowrap;
+}
+
+.attention-queue {
+    margin-top: 1.1rem;
+}
+
+.queue-nav {
+    display: flex;
+    flex: 0 0 auto;
+}
+
+.attention-track {
+    display: flex;
+    gap: .9rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    padding: .75rem .1rem .35rem;
+}
+
+.attention-card {
+    display: grid;
+    grid-template-columns: 88px minmax(230px, 1fr);
+    flex: 0 0 min(430px, calc(100vw - 4.5rem));
+    scroll-snap-align: start;
+    overflow: hidden;
+}
+
+.attention-card mat-card-content {
+    padding: .85rem;
+}
+
+.attention-card h4 {
+    margin-top: .55rem;
+    font-size: 1.05rem;
+}
+
+.attention-poster {
+    width: 88px;
+    height: 100%;
+    min-height: 142px;
+    object-fit: cover;
+    display: block;
+}
+
+.attention-label {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-weight: 600;
+}
+
+.attention-label mat-icon {
+    width: 17px;
+    height: 17px;
+    font-size: 17px;
+}
+
+@media (max-width: 640px) {
+    .dashboard-title,
+    .queue-heading {
+        align-items: flex-start;
+    }
+
+    .dashboard-title {
+        flex-direction: column;
+    }
+
+    .dashboard-counts {
+        justify-content: flex-start;
+    }
+
+    .attention-card {
+        grid-template-columns: 72px minmax(210px, 1fr);
+    }
+
+    .attention-poster {
+        width: 72px;
+    }
+}
+
+.voter-controls {
+    margin-top: .55rem;
+}
+
+.voter-controls button {
+    padding-left: 0;
+}
+
+.voter-breakdown {
+    display: grid;
+    // Size the columns from the space inside the media card, not the browser viewport.
+    // Narrow cards therefore stack Remove/Keep instead of squeezing two columns together.
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: .75rem;
+    margin-top: .45rem;
+    padding: .7rem;
+    border-radius: 8px;
+    background: rgba(127, 127, 127, .10);
+}
+
+.voter-column {
+    min-width: 0;
+}
+
+.voter-entry {
+    display: block;
+    min-width: 0;
+    margin-top: .4rem;
+    font-size: .82rem;
+    line-height: 1.3;
+}
+
+.voter-entry > span:first-child {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.voter-date {
+    display: block;
+    margin-top: .08rem;
+    opacity: .65;
+    white-space: normal;
+}
+
+.requester-marker {
+    display: inline-block;
+    margin-left: .2rem;
+    padding: .08rem .32rem;
+    border-radius: 999px;
+    background: rgba(127, 127, 127, .22);
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    vertical-align: middle;
+}
+
+.scheduled-countdown {
+    margin: .65rem 0 0;
+    font-weight: 700;
+}
+
+.grace-label {
+    font-weight: 700;
+}
+
+@media (max-width: 560px) {
+    .voter-breakdown {
+        grid-template-columns: minmax(0, 1fr);
     }
 }

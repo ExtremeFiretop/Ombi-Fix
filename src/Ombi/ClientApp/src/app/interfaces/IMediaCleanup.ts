@@ -44,6 +44,8 @@ export interface IMediaCleanupSettings extends ISettings {
     requesterCanVeto: boolean;
     deleteFiles: boolean;
     addImportExclusion: boolean;
+    notifyManagersOnPendingApproval: boolean;
+    notifyVotersOnPendingVotes: boolean;
     enabled: boolean;
 }
 
@@ -70,6 +72,8 @@ export interface IMediaCleanupItem {
     canCancel: boolean;
     communityAgeEligible: boolean;
     availableSince?: Date;
+    lastPlayedAt?: Date;
+    lastPlayedKnown: boolean;
     sizeOnDisk: number;
     cleanup?: IMediaCleanupRequest;
 }
@@ -81,11 +85,19 @@ export interface IMediaCleanupRequest {
     keepVotes: number;
     deleteVotes: number;
     requesterVeto: boolean;
-    myVote?: MediaCleanupVoteType;
+    myVote?: MediaCleanupVoteType | null;
     createdAt: Date;
     votingEndsAt?: Date;
     scheduledForDeletionAt?: Date;
     failureReason?: string;
+    voters?: IMediaCleanupVoter[];
+}
+
+export interface IMediaCleanupVoter {
+    displayName: string;
+    vote: MediaCleanupVoteType;
+    date: Date;
+    isRequester: boolean;
 }
 
 export interface IMediaCleanupActionResult {

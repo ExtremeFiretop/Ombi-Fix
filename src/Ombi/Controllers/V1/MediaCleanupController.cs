@@ -22,9 +22,14 @@ namespace Ombi.Controllers.V1
         }
 
         [HttpGet]
-        public Task<MediaCleanupOverview> GetOverview()
+        public Task<MediaCleanupOverview> GetOverview(
+            [FromQuery] RequestType? requestType = null,
+            [FromQuery] int? requestId = null,
+            [FromQuery] int? mediaId = null,
+            [FromQuery] bool includeMetrics = true,
+            [FromQuery] bool includeLastPlayed = true)
         {
-            return _engine.GetOverview();
+            return _engine.GetOverview(requestType, requestId, mediaId, includeMetrics, includeLastPlayed, HttpContext.RequestAborted);
         }
 
         [HttpPost("own/{requestType}/{requestId:int}")]

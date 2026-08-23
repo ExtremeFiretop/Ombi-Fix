@@ -90,6 +90,17 @@
 				</td>
 			</ng-container>
 
+			<ng-container matColumnDef="lastActive">
+				<th mat-header-cell *matHeaderCellDef mat-sort-header
+					matTooltip="Last authenticated Ombi activity. Updated at most once per minute while the user is active.">Last Active</th>
+				<td mat-cell *matCellDef="let u">
+					<span *ngIf="u.lastActive">
+						{{ u.lastActive | ombiDate: 'Ppp' }}
+					</span>
+					<span *ngIf="!u.lastActive"> No activity recorded yet </span>
+				</td>
+			</ng-container>
+
 			<ng-container matColumnDef="userType">
 				<th mat-header-cell *matHeaderCellDef mat-sort-header>User Type</th>
 				<td mat-cell *matCellDef="let u">
