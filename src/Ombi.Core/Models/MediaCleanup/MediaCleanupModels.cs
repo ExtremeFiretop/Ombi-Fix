@@ -21,6 +21,8 @@ namespace Ombi.Core.Models.MediaCleanup
         public int RequestId { get; set; }
         public string Title { get; set; }
         public string PosterPath { get; set; }
+        public string Overview { get; set; }
+        public DateTime? ReleaseDate { get; set; }
         public string RequestedBy { get; set; }
         public bool OwnedByCurrentUser { get; set; }
         public bool CanRequestOwnRemoval { get; set; }

@@ -126,6 +126,26 @@
     font-size: .9rem;
 }
 
+
+.media-overview {
+    display: -webkit-box;
+    margin: .55rem 0 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    line-height: 1.4;
+    opacity: .88;
+}
+
+.media-overview-voting {
+    -webkit-line-clamp: 3;
+    font-size: .88rem;
+}
+
+.media-overview-catalog {
+    -webkit-line-clamp: 4;
+    font-size: .9rem;
+}
+
 .owner-chip,
 .veto {
     display: inline-block;

@@ -101,7 +101,10 @@
                                 {{ hasVoted(item) ? 'Vote recorded' : 'Vote needed' }}
                             </span>
                             <h4>{{ item.title }}</h4>
-                            <p class="metadata">{{ mediaTypeText(item.requestType) }}<span *ngIf="item.requestedBy"> · Requested by {{ item.requestedBy }}</span></p>
+                            <p class="metadata">
+                                {{ mediaTypeText(item.requestType) }}<span *ngIf="item.releaseDate"> · {{ item.releaseDate | date:'yyyy' }}</span><span *ngIf="item.requestedBy"> · Requested by {{ item.requestedBy }}</span>
+                            </p>
+                            <p class="media-overview media-overview-voting" *ngIf="item.overview">{{ item.overview }}</p>
                             <p class="metadata" *ngIf="item.cleanup as cleanup">{{ cleanup.deleteVotes }} remove · {{ cleanup.keepVotes }} keep</p>
                             <p class="vote-needed-message" *ngIf="!hasVoted(item)">You have not voted yet.</p>
                             <p class="metadata" *ngIf="item.cleanup?.votingEndsAt">Voting ends {{ item.cleanup?.votingEndsAt | date:'medium' }}</p>
@@ -254,12 +257,13 @@
                         <div>
                             <h2>{{ item.title }}</h2>
                             <span class="muted">
-                                {{ mediaTypeText(item.requestType) }} · {{ loadingMetrics && !item.sizeOnDisk ? 'Loading size…' : formatBytes(item.sizeOnDisk) }}
+                                {{ mediaTypeText(item.requestType) }}<span *ngIf="item.releaseDate"> · {{ item.releaseDate | date:'yyyy' }}</span> · {{ loadingMetrics && !item.sizeOnDisk ? 'Loading size…' : formatBytes(item.sizeOnDisk) }}
                             </span>
                         </div>
                         <span class="owner-chip" *ngIf="item.ownedByCurrentUser">Your request</span>
                     </div>
 
+                    <p class="media-overview media-overview-catalog" *ngIf="item.overview">{{ item.overview }}</p>
                     <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
                     <p class="metadata" *ngIf="item.availableSince">Available since {{ item.availableSince | date:'mediumDate' }}</p>
                     <p class="metadata" *ngIf="item.lastPlayedKnown">

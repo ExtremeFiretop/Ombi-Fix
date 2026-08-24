@@ -63,6 +63,8 @@ export interface IMediaCleanupItem {
     requestId: number;
     title: string;
     posterPath: string;
+    overview?: string;
+    releaseDate?: Date;
     requestedBy: string;
     ownedByCurrentUser: boolean;
     canRequestOwnRemoval: boolean;
