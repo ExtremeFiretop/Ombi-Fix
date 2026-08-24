@@ -1,3 +1,7 @@
+## [4.60.25](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.24...v4.60.25) (2026-08-24)
+
+
+
 ## [4.60.24](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.23...v4.60.24) (2026-08-24)
 
 
@@ -482,57 +486,6 @@
 
 
 ## [4.58.1](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.58.0...v4.58.1) (2026-04-07)
-
-
-
-# [4.58.0](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.55.7...v4.58.0) (2026-04-06)
-
-
-### Bug Fixes
-
-* disable font inlining in Angular production build ([713c2fd](https://github.com/ExtremeFiretop/Ombi-Fix/commit/713c2fd5e9456efbf6da016db67e4b3364c82fb0))
-* extend request cache TTL and add null guards for TV results ([195c989](https://github.com/ExtremeFiretop/Ombi-Fix/commit/195c9898ebcae816fed73ff12859b55b67f3def1))
-* guard Docker image push to master/develop branches only ([86427e5](https://github.com/ExtremeFiretop/Ombi-Fix/commit/86427e57df1cf91dc68a911870939db9a208fae2))
-* make discover page processing sequential to fix test failures ([aa087c7](https://github.com/ExtremeFiretop/Ombi-Fix/commit/aa087c7b9b860b4c39283b54163c95da83d5b08a))
-* move API throttle inside cache factory to avoid contention on cache hits ([4e41ce6](https://github.com/ExtremeFiretop/Ombi-Fix/commit/4e41ce6dcf9fc900a193338ac729be56d8ab28ce))
-* parallelize discover page API calls and processing for faster load times ([c417eea](https://github.com/ExtremeFiretop/Ombi-Fix/commit/c417eeaa68f313a37369726fa4917d4550a7fa71))
-* remove SemaphoreSlim throttle - unnecessary given TMDB rate limits ([feee9f8](https://github.com/ExtremeFiretop/Ombi-Fix/commit/feee9f8514b07ddd877615eb42beedd470daeef5))
-* remove unsupported linux/arm/v7 platform from Docker build ([90d502f](https://github.com/ExtremeFiretop/Ombi-Fix/commit/90d502f8c3359d0d09c229f501a6478abe81c230))
-* restore missing SearchViewModel using in Emby and Jellyfin rules ([afad1c9](https://github.com/ExtremeFiretop/Ombi-Fix/commit/afad1c9890c30cb5483a9b6b8e61e2b96a345eaa))
-* restore TransformMovieResultsToResponse to match original code ([5cd43e2](https://github.com/ExtremeFiretop/Ombi-Fix/commit/5cd43e282e609be953c5b9527e901111bb9df24b))
-* run search rules sequentially to avoid DbContext thread-safety issues ([7172269](https://github.com/ExtremeFiretop/Ombi-Fix/commit/7172269d1026a43a8cfcb87a29f1ccfd45bab8fd))
-* set PartlyAvailable when fully available with unaired episodes ([783620b](https://github.com/ExtremeFiretop/Ombi-Fix/commit/783620bc7ea6b99e75480757ab8cdf6b1622fe62))
-* the post path on the requests page for TV ([089eef5](https://github.com/ExtremeFiretop/Ombi-Fix/commit/089eef5e30e0e2dc2cdc13d709678c58ad0c0b92))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([cb6e7ce](https://github.com/ExtremeFiretop/Ombi-Fix/commit/cb6e7ce96cbe25a9ad02a69d710440d0a032b5b1))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([cbeb8a3](https://github.com/ExtremeFiretop/Ombi-Fix/commit/cbeb8a325e56634695348b2737cd4796138e8342))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([116775e](https://github.com/ExtremeFiretop/Ombi-Fix/commit/116775ecbccafdcb70948f4f464444d370ff2bfb))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([5a561c9](https://github.com/ExtremeFiretop/Ombi-Fix/commit/5a561c974c8000cbb361ee35aa0091e1dea91ae2))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([8474267](https://github.com/ExtremeFiretop/Ombi-Fix/commit/8474267fbd59e841597f62593db4401792c9f495))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([ff56bce](https://github.com/ExtremeFiretop/Ombi-Fix/commit/ff56bce713cc1f3f021cb3de0fd61f4035ec0138))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([3cb52a2](https://github.com/ExtremeFiretop/Ombi-Fix/commit/3cb52a27aa39c3972f855ee22307957cfd53609b))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([9446001](https://github.com/ExtremeFiretop/Ombi-Fix/commit/94460017111d493e9678a11684d01c239fc97cf9))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([12c6c8a](https://github.com/ExtremeFiretop/Ombi-Fix/commit/12c6c8a37d57375dc5520a66bf3cedb9ef5b57c5))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([b16dcef](https://github.com/ExtremeFiretop/Ombi-Fix/commit/b16dcef1925ca087cc677873c7abae450f2f1d7f))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([f04cf8d](https://github.com/ExtremeFiretop/Ombi-Fix/commit/f04cf8d8ce2d8899fefb2e55c5e5647d1da3ced4))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([f14ea54](https://github.com/ExtremeFiretop/Ombi-Fix/commit/f14ea540912bc738d2cacef96a851424867cdb90))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([6ed8ebc](https://github.com/ExtremeFiretop/Ombi-Fix/commit/6ed8ebc64bc4418d771f5dde734e9a8048d812a0))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([6aeeafb](https://github.com/ExtremeFiretop/Ombi-Fix/commit/6aeeafb02fe8eb9f51de4f69bbda036889f4c226))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([cbf7421](https://github.com/ExtremeFiretop/Ombi-Fix/commit/cbf742197286cef05d344112683f0d86c1620f08))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([9c785fb](https://github.com/ExtremeFiretop/Ombi-Fix/commit/9c785fb7dcbcb43b26af5aabc8746cccd2c69744))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([32ecec1](https://github.com/ExtremeFiretop/Ombi-Fix/commit/32ecec1cdf7b4858c0a37e9588f88cc9e0379bb3))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([7497cf2](https://github.com/ExtremeFiretop/Ombi-Fix/commit/7497cf2b6d4c5ca1d8f140d3198b66e9b098030d))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([6d92d48](https://github.com/ExtremeFiretop/Ombi-Fix/commit/6d92d4839889417e3fd3b2b95c82133ae4d17f7a))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([3236324](https://github.com/ExtremeFiretop/Ombi-Fix/commit/3236324efd0c40c173738fe5fbd68f9f18e638cd))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([2e2aacd](https://github.com/ExtremeFiretop/Ombi-Fix/commit/2e2aacd1767f6c6b7571f6d40e6454caa939f4a0))
-* **translations:** 🌐 New translations from Crowdin [skip ci] ([c282583](https://github.com/ExtremeFiretop/Ombi-Fix/commit/c2825833c17b64b70ba5166ca2d5e34c2a35b783))
-* update actions/checkout to v4 in docker job ([d8c2042](https://github.com/ExtremeFiretop/Ombi-Fix/commit/d8c2042e037cbaf73c4064eb57be13cbebbc5066))
-* update Dockerfile COPY commands to match current project structure ([3d67329](https://github.com/ExtremeFiretop/Ombi-Fix/commit/3d6732919d8208d7552df25f6d4f4e700a825cd1))
-* use DateTime.Now.Date consistently in AvailabilityRuleHelper ([59dca57](https://github.com/ExtremeFiretop/Ombi-Fix/commit/59dca5799ba1701ae06d5762a23799c7a60495de))
-
-
-### Features
-
-* add Docker image publishing to CI pipeline ([2268f7b](https://github.com/ExtremeFiretop/Ombi-Fix/commit/2268f7b8f4b72001c1821e892d1f43e09af5e4fe))
 
 
 
