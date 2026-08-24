@@ -206,7 +206,7 @@ namespace Ombi.Core.Engine
                         RequestId = movie.Id,
                         Title = movie.Title,
                         PosterPath = movie.PosterPath,
-                        RequestedBy = movie.RequestedUser?.UserAlias ?? movie.RequestedByAlias,
+                        RequestedBy = GetRequesterDisplayName(movie.RequestedUser, movie.RequestedByAlias, permissions.CanManage),
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
@@ -248,7 +248,8 @@ namespace Ombi.Core.Engine
                         .OrderByDescending(x => x.Value)
                         .FirstOrDefault();
                     var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
-                    var requestedBy = tv.ChildRequests.Select(x => x.RequestedUser?.UserAlias ?? x.RequestedByAlias)
+                    var requestedBy = tv.ChildRequests
+                        .Select(x => GetRequesterDisplayName(x.RequestedUser, x.RequestedByAlias, permissions.CanManage))
                         .Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
                     if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
                     {
@@ -1334,6 +1335,27 @@ namespace Ombi.Core.Engine
         private Task<bool> SaveState(MediaCleanupState state)
         {
             return _state.SaveSettingsAsync(state);
+        }
+
+        private static string GetRequesterDisplayName(OmbiUser requestedUser, string legacyRequestedByAlias, bool canSeeAliases)
+        {
+            if (requestedUser != null)
+            {
+                if (canSeeAliases && !string.IsNullOrWhiteSpace(requestedUser.Alias))
+                {
+                    return requestedUser.Alias;
+                }
+
+                // User aliases are administrator-assigned private labels. Normal cleanup
+                // users should only receive the account/Plex username, matching the rest
+                // of the non-moderation WebUI.
+                return requestedUser.UserName ?? string.Empty;
+            }
+
+            // Older request rows can contain only RequestedByAlias. That value may be an
+            // administrator-assigned nickname, so never expose it to a non-manager when
+            // the underlying Ombi user can no longer be resolved.
+            return canSeeAliases ? legacyRequestedByAlias ?? string.Empty : string.Empty;
         }
 
         private async Task<CleanupPermissions> GetPermissions(OmbiUser user)

@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ombi.Core.Settings;
 using Ombi.Helpers;
@@ -79,19 +80,59 @@ namespace Ombi.Schedule.Jobs.Ombi
                 return;
             }
 
-            var recipients = new List<OmbiUser>();
-            recipients.AddRange(await _userManager.GetUsersInRoleAsync(OmbiRoles.Admin));
-            recipients.AddRange(await _userManager.GetUsersInRoleAsync(OmbiRoles.PowerUser));
-            recipients.AddRange(await _userManager.GetUsersInRoleAsync(OmbiRoles.VoteOnMediaCleanup));
+            // Resolve voters the same way the Media Cleanup engine evaluates permissions:
+            // inspect each Ombi user's actual assigned roles. This avoids relying on a
+            // GetUsersInRoleAsync union that can leave otherwise vote-capable users out of
+            // the scheduled reminder audience on some installations.
+            var allUsers = await _userManager.Users.ToListAsync();
+            var eligibleUsers = new List<OmbiUser>();
+            var roleLookupFailures = 0;
+
+            foreach (var user in allUsers.Where(x => x != null && !x.IsSystemUser))
+            {
+                try
+                {
+                    var roles = await _userManager.GetRolesAsync(user);
+                    if (HasCleanupVotingRole(roles))
+                    {
+                        eligibleUsers.Add(user);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    roleLookupFailures++;
+                    _logger.LogWarning(ex,
+                        "Could not resolve Media Cleanup voting roles for {UserName} ({UserId})",
+                        user.UserName, user.Id);
+                }
+            }
+
+            var eligibleWithEmail = eligibleUsers
+                .Where(x => !string.IsNullOrWhiteSpace(x.Email))
+                .GroupBy(x => x.Id)
+                .Select(x => x.First())
+                .ToList();
+
+            _logger.LogInformation(
+                "Media Cleanup vote reminder starting. ActiveVotes={ActiveVotes}, TotalUsers={TotalUsers}, EligibleUsers={EligibleUsers}, EligibleUsersWithEmail={EligibleUsersWithEmail}, RoleLookupFailures={RoleLookupFailures}",
+                activeVotes.Count, allUsers.Count, eligibleUsers.Count, eligibleWithEmail.Count, roleLookupFailures);
+
+            foreach (var user in eligibleUsers.Where(x => string.IsNullOrWhiteSpace(x.Email)))
+            {
+                _logger.LogDebug(
+                    "Skipping Media Cleanup vote reminder for {UserName} ({UserId}): no email address is configured.",
+                    user.UserName, user.Id);
+            }
 
             _customizationSettings.ClearCache();
             var customization = await _customizationSettings.GetSettingsAsync();
             var cleanupUrl = customization?.AddToUrl("cleanup");
+            var usersWithPendingVotes = 0;
+            var attempted = 0;
+            var sent = 0;
+            var failed = 0;
 
-            foreach (var user in recipients
-                .Where(x => x != null && !x.IsSystemUser && !string.IsNullOrWhiteSpace(x.Email))
-                .GroupBy(x => x.Id)
-                .Select(x => x.First()))
+            foreach (var user in eligibleWithEmail)
             {
                 var pending = activeVotes
                     .Where(x => x.Votes == null || x.Votes.All(v => v.UserId != user.Id))
@@ -101,26 +142,50 @@ namespace Ombi.Schedule.Jobs.Ombi
 
                 if (pending.Count == 0)
                 {
+                    _logger.LogDebug(
+                        "Skipping Media Cleanup vote reminder for {UserName} ({UserId}): all active votes have already been answered.",
+                        user.UserName, user.Id);
                     continue;
                 }
 
+                usersWithPendingVotes++;
+                attempted++;
+                var email = user.Email.Trim();
+
                 try
                 {
-                    var message = BuildMessage(user, pending, cleanupUrl);
+                    var message = BuildMessage(user, pending, cleanupUrl, email);
                     await _emailProvider.SendAdHoc(message, emailSettings);
+                    sent++;
+                    _logger.LogInformation(
+                        "Sent Media Cleanup vote reminder to {UserName} ({UserId}) with {PendingVotes} pending vote(s).",
+                        user.UserName, user.Id, pending.Count);
                 }
                 catch (Exception ex)
                 {
+                    failed++;
                     _logger.LogWarning(ex,
-                        "Could not send Media Cleanup vote reminder to {UserId} ({Email})",
-                        user.Id, user.Email);
+                        "Could not send Media Cleanup vote reminder to {UserName} ({UserId}) at {Email}",
+                        user.UserName, user.Id, email);
                 }
             }
+
+            _logger.LogInformation(
+                "Media Cleanup vote reminder completed. ActiveVotes={ActiveVotes}, EligibleUsers={EligibleUsers}, EligibleUsersWithEmail={EligibleUsersWithEmail}, UsersWithPendingVotes={UsersWithPendingVotes}, Attempted={Attempted}, Sent={Sent}, Failed={Failed}, RoleLookupFailures={RoleLookupFailures}",
+                activeVotes.Count, eligibleUsers.Count, eligibleWithEmail.Count, usersWithPendingVotes, attempted, sent, failed, roleLookupFailures);
         }
 
-        private static NotificationMessage BuildMessage(OmbiUser user, IReadOnlyCollection<MediaCleanupRecord> pending, string cleanupUrl)
+        private static bool HasCleanupVotingRole(IEnumerable<string> roles)
         {
-            var displayName = WebUtility.HtmlEncode(user.UserAlias ?? user.UserName ?? "Ombi user");
+            return roles.Any(role =>
+                string.Equals(role, OmbiRoles.Admin, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(role, OmbiRoles.PowerUser, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(role, OmbiRoles.VoteOnMediaCleanup, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static NotificationMessage BuildMessage(OmbiUser user, IReadOnlyCollection<MediaCleanupRecord> pending, string cleanupUrl, string email)
+        {
+            var displayName = WebUtility.HtmlEncode(user.UserName ?? "Ombi user");
             var html = new StringBuilder();
             html.Append($"<p>Hi {displayName},</p>");
             html.Append($"<p>You have <strong>{pending.Count}</strong> active Media Cleanup vote{(pending.Count == 1 ? string.Empty : "s")} waiting for your response.</p>");
@@ -165,7 +230,7 @@ namespace Ombi.Schedule.Jobs.Ombi
 
             return new NotificationMessage
             {
-                To = user.Email,
+                To = email,
                 Subject = $"Media Cleanup: {pending.Count} vote{(pending.Count == 1 ? string.Empty : "s")} waiting for you",
                 Message = html.ToString(),
                 Other =
