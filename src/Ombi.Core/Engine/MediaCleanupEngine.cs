@@ -1073,63 +1073,117 @@ namespace Ombi.Core.Engine
                 .Select(x => (x.SeasonNumber, x.EpisodeNumber))
                 .ToHashSet();
             var selectedSeasons = (record.SelectedSeasons ?? new List<int>()).ToHashSet();
+            var selectedSeasonNumbers = selected.Select(x => x.SeasonNumber)
+                .Concat(selectedSeasons)
+                .Distinct()
+                .ToList();
             if (selected.Count == 0 && selectedSeasons.Count == 0)
             {
                 return;
             }
 
-            var tvRequests = await _tvRequests.Get()
+            // Resolve every Ombi parent that represents this series, but only prune request-graph
+            // nodes that are actually touched by the selected cleanup. The previous implementation
+            // walked the whole graph and removed any pre-existing empty season/child it happened to
+            // encounter, which could erase unrelated historical requests for other seasons.
+            var parentIds = await _tvRequests.GetLite()
                 .Where(x => x.Id == record.MediaRequestId ||
                             (record.TheMovieDbId > 0 && x.ExternalProviderId == record.TheMovieDbId) ||
                             (record.TvDbId > 0 && x.TvDbId == record.TvDbId))
+                .Select(x => x.Id)
+                .Distinct()
                 .ToListAsync();
-
-            var removedEpisodes = 0;
-            foreach (var tv in tvRequests)
+            if (parentIds.Count == 0)
             {
-                foreach (var child in (tv.ChildRequests ?? new List<ChildRequests>()).ToList())
-                {
-                    foreach (var season in (child.SeasonRequests ?? new List<SeasonRequests>()).ToList())
-                    {
-                        var episodes = (season.Episodes ?? new List<EpisodeRequests>())
-                            .Where(x => selectedSeasons.Contains(season.SeasonNumber) ||
-                                        selected.Contains((season.SeasonNumber, x.EpisodeNumber)))
-                            .ToList();
-                        if (episodes.Count > 0)
-                        {
-                            _tvRequests.Db.EpisodeRequests.RemoveRange(episodes);
-                            foreach (var episode in episodes)
-                            {
-                                season.Episodes.Remove(episode);
-                            }
-                            removedEpisodes += episodes.Count;
-                        }
-
-                        if (season.Episodes == null || season.Episodes.Count == 0)
-                        {
-                            _tvRequests.Db.Set<SeasonRequests>().Remove(season);
-                            child.SeasonRequests?.Remove(season);
-                        }
-                    }
-
-                    if (child.SeasonRequests == null || child.SeasonRequests.Count == 0)
-                    {
-                        _tvRequests.Db.ChildRequests.Remove(child);
-                        tv.ChildRequests?.Remove(child);
-                    }
-                }
-
-                if (tv.ChildRequests == null || tv.ChildRequests.Count == 0)
-                {
-                    _tvRequests.Db.TvRequests.Remove(tv);
-                }
+                return;
             }
 
-            await _tvRequests.Save();
+            var touchedSeasons = await _tvRequests.Db.Set<SeasonRequests>()
+                .Include(x => x.Episodes)
+                .Where(x => parentIds.Contains(x.ChildRequest.ParentRequestId) &&
+                            selectedSeasonNumbers.Contains(x.SeasonNumber))
+                .ToListAsync();
+
+            var touchedSeasonIds = touchedSeasons.Select(x => x.Id).Distinct().ToList();
+            var touchedChildIds = touchedSeasons.Select(x => x.ChildRequestId).Distinct().ToList();
+            var touchedParentIds = touchedChildIds.Count == 0
+                ? new List<int>()
+                : await _tvRequests.Db.ChildRequests
+                    .Where(x => touchedChildIds.Contains(x.Id))
+                    .Select(x => x.ParentRequestId)
+                    .Distinct()
+                    .ToListAsync();
+            var removedEpisodes = 0;
+
+            foreach (var season in touchedSeasons)
+            {
+                var episodes = season.Episodes
+                    .Where(x => selectedSeasons.Contains(season.SeasonNumber) ||
+                                selected.Contains((season.SeasonNumber, x.EpisodeNumber)))
+                    .ToList();
+                if (episodes.Count == 0)
+                {
+                    continue;
+                }
+
+                _tvRequests.Db.EpisodeRequests.RemoveRange(episodes);
+                removedEpisodes += episodes.Count;
+            }
+
+            if (removedEpisodes > 0)
+            {
+                await _tvRequests.Save();
+            }
+
+            // Collapse only nodes made empty by the rows removed above. Untouched legacy or
+            // historical request nodes are deliberately left alone here; global request repair is
+            // handled by the dedicated maintenance path, not by a partial media cleanup.
+            var emptyTouchedSeasons = touchedSeasonIds.Count == 0
+                ? new List<SeasonRequests>()
+                : await _tvRequests.Db.Set<SeasonRequests>()
+                    .Where(x => touchedSeasonIds.Contains(x.Id) &&
+                                !_tvRequests.Db.EpisodeRequests.Any(e => e.SeasonId == x.Id))
+                    .ToListAsync();
+            var removedSeasons = emptyTouchedSeasons.Count;
+            if (removedSeasons > 0)
+            {
+                _tvRequests.Db.Set<SeasonRequests>().RemoveRange(emptyTouchedSeasons);
+                await _tvRequests.Save();
+            }
+
+            var emptyTouchedChildren = touchedChildIds.Count == 0
+                ? new List<ChildRequests>()
+                : await _tvRequests.Db.ChildRequests
+                    .Where(x => touchedChildIds.Contains(x.Id) &&
+                                !_tvRequests.Db.Set<SeasonRequests>().Any(s => s.ChildRequestId == x.Id))
+                    .ToListAsync();
+            var removedChildren = emptyTouchedChildren.Count;
+            if (removedChildren > 0)
+            {
+                _tvRequests.Db.ChildRequests.RemoveRange(emptyTouchedChildren);
+                await _tvRequests.Save();
+            }
+
+            var emptyTouchedParents = touchedParentIds.Count == 0
+                ? new List<TvRequests>()
+                : await _tvRequests.Db.TvRequests
+                    .Where(x => touchedParentIds.Contains(x.Id) &&
+                                !_tvRequests.Db.ChildRequests.Any(c => c.ParentRequestId == x.Id))
+                    .ToListAsync();
+            var removedParents = emptyTouchedParents.Count;
+            if (removedParents > 0)
+            {
+                _tvRequests.Db.TvRequests.RemoveRange(emptyTouchedParents);
+                await _tvRequests.Save();
+            }
+
             _logger.LogInformation(
-                "Removed {EpisodeCount} Ombi TV episode request row(s) for partial cleanup of '{Title}'",
+                "Partial TV cleanup request reconciliation for '{Title}': Episodes={EpisodeCount}, Seasons={SeasonCount}, Children={ChildCount}, Parents={ParentCount}",
+                record.Title,
                 removedEpisodes,
-                record.Title);
+                removedSeasons,
+                removedChildren,
+                removedParents);
         }
 
         private async Task RemoveArrSearchCache(MediaCleanupRecord record)
