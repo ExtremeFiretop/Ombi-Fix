@@ -14,7 +14,10 @@ namespace Ombi.Api.External.ExternalApis.Sonarr.Models
         public int totalEpisodeCount { get; set; }
         public int episodeCount { get; set; }
         public int episodeFileCount { get; set; }
+        // Older Sonarr responses exposed sizeOnDisk at the series root.
+        // Current v3/v4 responses expose the aggregate size under statistics.
         public long sizeOnDisk { get; set; }
+        public Statistics statistics { get; set; }
         public string status { get; set; }
         public string overview { get; set; }
         public DateTime previousAiring { get; set; }

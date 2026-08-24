@@ -1032,7 +1032,13 @@ namespace Ombi.Core.Engine
             {
                 foreach (var series in await _sonarr.GetSeries(settings.ApiKey, settings.FullUri))
                 {
-                    result[series.tvdbId] = series.sizeOnDisk;
+                    // Sonarr v3/v4 returns the aggregate series size in the nested
+                    // statistics object. Keep the root-level value as a fallback for
+                    // older Sonarr versions/responses.
+                    var sizeOnDisk = series.statistics?.sizeOnDisk > 0
+                        ? series.statistics.sizeOnDisk
+                        : series.sizeOnDisk;
+                    result[series.tvdbId] = sizeOnDisk;
                 }
             }
             catch (Exception ex)
