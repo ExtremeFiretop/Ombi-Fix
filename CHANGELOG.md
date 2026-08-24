@@ -1,3 +1,7 @@
+## [4.60.24](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.23...v4.60.24) (2026-08-24)
+
+
+
 ## [4.60.23](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.22...v4.60.23) (2026-08-24)
 
 
@@ -529,10 +533,6 @@
 ### Features
 
 * add Docker image publishing to CI pipeline ([2268f7b](https://github.com/ExtremeFiretop/Ombi-Fix/commit/2268f7b8f4b72001c1821e892d1f43e09af5e4fe))
-
-
-
-## [4.55.7](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.55.6...v4.55.7) (2026-03-01)
 
 
 
