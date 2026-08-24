@@ -1,3 +1,7 @@
+## [4.60.22](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.21...v4.60.22) (2026-08-24)
+
+
+
 ## [4.60.21](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.20...v4.60.21) (2026-08-24)
 
 
@@ -534,16 +538,6 @@
 ### Bug Fixes
 
 * base url issue [#5343](https://github.com/ExtremeFiretop/Ombi-Fix/issues/5343) ([fb39386](https://github.com/ExtremeFiretop/Ombi-Fix/commit/fb39386e1615cd2eabb882484b64e6a76485e4cb))
-
-
-
-## [4.55.5](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.55.4...v4.55.5) (2026-02-20)
-
-
-### Bug Fixes
-
-* **build:** silence remaining esbuild/sass warnings and remove unused imports ([1915b09](https://github.com/ExtremeFiretop/Ombi-Fix/commit/1915b09e557128d43d70cdecb87f38277497bacb))
-* **tmdb:** Fix rendering of the movie db page ([a0b84f7](https://github.com/ExtremeFiretop/Ombi-Fix/commit/a0b84f74620f7e0b8c33a03fa3cc5f7d6d42ab93))
 
 
 
