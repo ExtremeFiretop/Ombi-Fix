@@ -1,3 +1,7 @@
+## [4.60.20](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.19...v4.60.20) (2026-08-24)
+
+
+
 ## [4.60.19](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.16...v4.60.19) (2026-08-24)
 
 
@@ -545,15 +549,6 @@
 ### Bug Fixes
 
 * **emby/jellyfin:** fix [#5338](https://github.com/ExtremeFiretop/Ombi-Fix/issues/5338) ([6217461](https://github.com/ExtremeFiretop/Ombi-Fix/commit/62174617bbef0839527c179909cdbe50e90f5955))
-
-
-
-## [4.55.3](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.55.2...v4.55.3) (2026-02-20)
-
-
-### Performance Improvements
-
-* Improvements to api calls ([6907604](https://github.com/ExtremeFiretop/Ombi-Fix/commit/69076047f5ace434b175fa424acd78d87eeeb1de))
 
 
 
