@@ -29,6 +29,12 @@ namespace Ombi.Core.Rule.Rules.Request
             if (obj.RequestType == RequestType.TvShow)
             {
                 var tv = (ChildRequests) obj;
+
+                // Repair legacy request graphs before using them to decide whether an episode is
+                // already requested. This makes stale rows self-heal on the very next request attempt
+                // instead of requiring another delete operation first.
+                await Tv.CleanupOrphanedRequestData();
+
                 var currentRequests = await Tv.GetChild()
                     .Where(x => x.ParentRequest.ExternalProviderId == tv.Id) // the Id on the child is TheMovieDb at this point
                     .ToListAsync();

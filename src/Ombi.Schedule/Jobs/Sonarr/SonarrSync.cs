@@ -17,6 +17,7 @@ using Ombi.Schedule.Jobs.Radarr;
 using Ombi.Settings.Settings.Models.External;
 using Ombi.Store.Context;
 using Ombi.Store.Entities;
+using Ombi.Store.Repository.Requests;
 using Quartz;
 
 namespace Ombi.Schedule.Jobs.Sonarr
@@ -24,13 +25,14 @@ namespace Ombi.Schedule.Jobs.Sonarr
     public class SonarrSync : ISonarrSync
     {
         public SonarrSync(ISettingsService<SonarrSettings> s, ISonarrV3Api api, ILogger<SonarrSync> l, ExternalContext ctx,
-            IMovieDbApi movieDbApi)
+            IMovieDbApi movieDbApi, ITvRequestRepository tvRequestRepository)
         {
             _settings = s;
             _api = api;
             _log = l;
             _ctx = ctx;
             _movieDbApi = movieDbApi;
+            _tvRequestRepository = tvRequestRepository;
             _settings.ClearCache();
         }
 
@@ -39,11 +41,29 @@ namespace Ombi.Schedule.Jobs.Sonarr
         private readonly ILogger<SonarrSync> _log;
         private readonly ExternalContext _ctx;
         private readonly IMovieDbApi _movieDbApi;
+        private readonly ITvRequestRepository _tvRequestRepository;
 
         public async Task Execute(IJobExecutionContext job)
         {
             try
             {
+                try
+                {
+                    var removedRequestRows = await _tvRequestRepository.CleanupOrphanedRequestData();
+                    if (removedRequestRows > 0)
+                    {
+                        _log.LogInformation(
+                            "Media request maintenance removed {RemovedRows} orphaned or empty TV request row(s).",
+                            removedRequestRows);
+                    }
+                }
+                catch (Exception maintenanceException)
+                {
+                    // Request-table housekeeping must never prevent the Sonarr cache from syncing.
+                    _log.LogWarning(maintenanceException,
+                        "Could not run TV request maintenance before the Sonarr sync; continuing with the Sonarr sync.");
+                }
+
                 var settings = await _settings.GetSettingsAsync();
                 if (!settings.Enabled)
                 {

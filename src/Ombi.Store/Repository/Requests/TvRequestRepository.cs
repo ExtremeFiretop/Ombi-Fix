@@ -187,33 +187,50 @@ namespace Ombi.Store.Repository.Requests
 
         public async Task<int> CleanupOrphanedRequestData()
         {
+            var removed = 0;
+
+            // Work from the leaves upward and persist each stage before evaluating the next one.
+            // This lets the same maintenance pass collapse legacy graphs such as:
+            // episode -> missing season, season -> no episodes, child -> no seasons, parent -> no children.
             var orphanEpisodes = await Db.EpisodeRequests
                 .Where(x => !Db.Set<SeasonRequests>().Any(s => s.Id == x.SeasonId))
                 .ToListAsync();
             if (orphanEpisodes.Count > 0)
             {
                 Db.EpisodeRequests.RemoveRange(orphanEpisodes);
+                removed += orphanEpisodes.Count;
+                await InternalSaveChanges();
             }
 
-            var orphanSeasons = await Db.Set<SeasonRequests>()
-                .Where(x => !Db.ChildRequests.Any(c => c.Id == x.ChildRequestId))
+            var staleSeasons = await Db.Set<SeasonRequests>()
+                .Where(x => !Db.ChildRequests.Any(c => c.Id == x.ChildRequestId)
+                         || !Db.EpisodeRequests.Any(e => e.SeasonId == x.Id))
                 .ToListAsync();
-            if (orphanSeasons.Count > 0)
+            if (staleSeasons.Count > 0)
             {
-                Db.Set<SeasonRequests>().RemoveRange(orphanSeasons);
+                Db.Set<SeasonRequests>().RemoveRange(staleSeasons);
+                removed += staleSeasons.Count;
+                await InternalSaveChanges();
             }
 
-            var orphanChildren = await Db.ChildRequests
-                .Where(x => !Db.TvRequests.Any(t => t.Id == x.ParentRequestId))
+            var staleChildren = await Db.ChildRequests
+                .Where(x => !Db.TvRequests.Any(t => t.Id == x.ParentRequestId)
+                         || !Db.Set<SeasonRequests>().Any(s => s.ChildRequestId == x.Id))
                 .ToListAsync();
-            if (orphanChildren.Count > 0)
+            if (staleChildren.Count > 0)
             {
-                Db.ChildRequests.RemoveRange(orphanChildren);
+                Db.ChildRequests.RemoveRange(staleChildren);
+                removed += staleChildren.Count;
+                await InternalSaveChanges();
             }
 
-            var removed = orphanEpisodes.Count + orphanSeasons.Count + orphanChildren.Count;
-            if (removed > 0)
+            var emptyParents = await Db.TvRequests
+                .Where(x => !Db.ChildRequests.Any(c => c.ParentRequestId == x.Id))
+                .ToListAsync();
+            if (emptyParents.Count > 0)
             {
+                Db.TvRequests.RemoveRange(emptyParents);
+                removed += emptyParents.Count;
                 await InternalSaveChanges();
             }
 
