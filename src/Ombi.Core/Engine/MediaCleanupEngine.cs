@@ -289,6 +289,110 @@ namespace Ombi.Core.Engine
                         Cleanup = ToViewModel(cleanup, user.Id, settings, voterDisplayNames)
                     });
                 }
+
+                // A partial TV cleanup can legitimately remove the last remaining Ombi request
+                // row while the series itself (and other seasons) still exists in Sonarr. The
+                // cleanup catalog is request-backed, so without a separate anchor the title would
+                // disappear and could not be cleaned again. Re-use the latest completed partial
+                // cleanup record as a media-catalog anchor while Sonarr still knows about the
+                // series. This avoids keeping empty/fake request rows and stays compatible with
+                // request-graph self-healing.
+                var sonarrSeriesCache = await _sonarrCache.GetAll()
+                    .AsNoTracking()
+                    .ToListAsync(cancellationToken);
+                var sonarrTvDbIds = sonarrSeriesCache
+                    .Where(x => x.TvDbId > 0)
+                    .Select(x => x.TvDbId)
+                    .ToHashSet();
+                var sonarrMovieDbIds = sonarrSeriesCache
+                    .Where(x => x.TheMovieDbId > 0)
+                    .Select(x => x.TheMovieDbId)
+                    .ToHashSet();
+
+                var representedRequestIds = tvRequests.Select(x => x.Id).ToHashSet();
+                var representedTvDbIds = tvRequests.Where(x => x.TvDbId > 0).Select(x => x.TvDbId).ToHashSet();
+                var representedMovieDbIds = tvRequests.Where(x => x.ExternalProviderId > 0).Select(x => x.ExternalProviderId).ToHashSet();
+
+                var residualRecords = state.Requests
+                    .Where(x => x.RequestType == RequestType.TvShow && x.Status == MediaCleanupStatus.Completed)
+                    .GroupBy(GetTvCleanupIdentityKey)
+                    .Select(x => x.OrderByDescending(r => r.CompletedAt ?? r.CreatedAt).First())
+                    .Where(IsPartialTvCleanup)
+                    .Where(x =>
+                        (x.TvDbId > 0 && sonarrTvDbIds.Contains(x.TvDbId)) ||
+                        (x.TheMovieDbId > 0 && sonarrMovieDbIds.Contains(x.TheMovieDbId)))
+                    .Where(x =>
+                        !representedRequestIds.Contains(x.MediaRequestId) &&
+                        !(x.TvDbId > 0 && representedTvDbIds.Contains(x.TvDbId)) &&
+                        !(x.TheMovieDbId > 0 && representedMovieDbIds.Contains(x.TheMovieDbId)))
+                    .Where(x => !requestId.HasValue || x.MediaRequestId == requestId.Value)
+                    .Where(x => !mediaId.HasValue ||
+                                (x.TheMovieDbId > 0 && x.TheMovieDbId == mediaId.Value) ||
+                                (x.TvDbId > 0 && x.TvDbId == mediaId.Value))
+                    .OrderBy(x => x.Title)
+                    .ToList();
+
+                var residualOwnerIds = residualRecords
+                    .SelectMany(x => x.OwnerUserIds ?? new List<string>())
+                    .Where(x => !string.IsNullOrEmpty(x))
+                    .Distinct()
+                    .ToList();
+                var residualOwners = residualOwnerIds.Count == 0
+                    ? new Dictionary<string, OmbiUser>()
+                    : (await _userManager.Users
+                        .Where(x => residualOwnerIds.Contains(x.Id))
+                        .ToListAsync(cancellationToken))
+                        .ToDictionary(x => x.Id);
+
+                foreach (var record in residualRecords)
+                {
+                    active.TryGetValue((RequestType.TvShow, record.MediaRequestId), out var cleanup);
+                    var owners = (record.OwnerUserIds ?? new List<string>())
+                        .Where(x => !string.IsNullOrEmpty(x))
+                        .Distinct()
+                        .ToList();
+                    var owned = owners.Count == 1 && owners[0] == user.Id;
+                    var ageEligible = IsAgeEligible(record.AvailableSince, settings.MinimumMediaAgeDays, now);
+                    var requestedBy = owners
+                        .Where(residualOwners.ContainsKey)
+                        .Select(x => GetRequesterDisplayName(residualOwners[x], null, permissions.CanManage))
+                        .Where(x => !string.IsNullOrEmpty(x))
+                        .Distinct()
+                        .ToList();
+
+                    if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
+                    {
+                        continue;
+                    }
+
+                    if (plexLookup != null)
+                    {
+                        var plexKey = plexLookup.FindSeries(record.TvDbId, record.TheMovieDbId, null);
+                        if (!string.IsNullOrEmpty(plexKey))
+                        {
+                            plexKeys[(RequestType.TvShow, record.MediaRequestId)] = plexKey;
+                        }
+                    }
+
+                    result.Items.Add(new MediaCleanupItemViewModel
+                    {
+                        RequestType = RequestType.TvShow,
+                        RequestId = record.MediaRequestId,
+                        Title = record.Title,
+                        PosterPath = record.PosterPath,
+                        RequestedBy = requestedBy.Count == 1 ? requestedBy[0] : requestedBy.Count > 1 ? "Multiple users" : string.Empty,
+                        OwnedByCurrentUser = owned,
+                        CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
+                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
+                        CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
+                        CanManage = cleanup != null && permissions.CanManage,
+                        CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
+                        CommunityAgeEligible = ageEligible,
+                        AvailableSince = record.AvailableSince,
+                        SizeOnDisk = tvSizes.TryGetValue(record.TvDbId, out var residualTvSize) ? residualTvSize : 0,
+                        Cleanup = ToViewModel(cleanup, user.Id, settings, voterDisplayNames)
+                    });
+                }
             }
 
             if (includeLastPlayed)
@@ -314,10 +418,20 @@ namespace Ombi.Core.Engine
             }
 
             var tv = await _tvRequests.Get().FirstOrDefaultAsync(x => x.Id == requestId);
-            if (tv == null || tv.ChildRequests == null || !tv.ChildRequests.Any() || !tv.ChildRequests.All(x => x.Available))
+            MediaCleanupRecord residualRecord = null;
+            var usableRequest = tv != null && tv.ChildRequests != null && tv.ChildRequests.Any() && tv.ChildRequests.All(x => x.Available);
+            if (!usableRequest)
             {
-                return new MediaCleanupTvSelectionViewModel { Result = false, Message = "The available Ombi TV request could not be found." };
+                var state = await LoadState();
+                residualRecord = FindResidualTvCatalogRecord(state, requestId);
+                if (residualRecord == null || !await HasResidualTvSeries(residualRecord))
+                {
+                    return new MediaCleanupTvSelectionViewModel { Result = false, Message = "The available Ombi TV request or residual Sonarr series could not be found." };
+                }
             }
+
+            var title = usableRequest ? tv.Title : residualRecord.Title;
+            var tvDbId = usableRequest ? tv.TvDbId : residualRecord.TvDbId;
 
             var sonarrSettings = await _sonarrSettings.GetSettingsAsync();
             if (!sonarrSettings.Enabled)
@@ -326,7 +440,7 @@ namespace Ombi.Core.Engine
                 {
                     Result = false,
                     RequestId = requestId,
-                    Title = tv.Title,
+                    Title = title,
                     DeleteFilesEnabled = settings.DeleteFiles,
                     Message = "Sonarr is not enabled, so episode-level cleanup is unavailable."
                 };
@@ -335,14 +449,14 @@ namespace Ombi.Core.Engine
             try
             {
                 var series = (await _sonarr.GetSeries(sonarrSettings.ApiKey, sonarrSettings.FullUri))
-                    .FirstOrDefault(x => x.tvdbId == tv.TvDbId);
+                    .FirstOrDefault(x => x.tvdbId == tvDbId);
                 if (series == null)
                 {
                     return new MediaCleanupTvSelectionViewModel
                     {
                         Result = false,
                         RequestId = requestId,
-                        Title = tv.Title,
+                        Title = title,
                         DeleteFilesEnabled = settings.DeleteFiles,
                         Message = "This series could not be found in Sonarr."
                     };
@@ -356,7 +470,7 @@ namespace Ombi.Core.Engine
                 {
                     Result = true,
                     RequestId = requestId,
-                    Title = tv.Title,
+                    Title = title,
                     DeleteFilesEnabled = settings.DeleteFiles,
                     SizeOnDisk = episodeFiles.GroupBy(x => x.id).Sum(x => x.First().size)
                 };
@@ -401,7 +515,7 @@ namespace Ombi.Core.Engine
                 {
                     Result = false,
                     RequestId = requestId,
-                    Title = tv.Title,
+                    Title = title,
                     DeleteFilesEnabled = settings.DeleteFiles,
                     Message = "Ombi could not load this series' episodes from Sonarr."
                 };
@@ -1525,7 +1639,29 @@ namespace Ombi.Core.Engine
             if (requestType == RequestType.TvShow)
             {
                 var tv = await _tvRequests.GetLite().FirstOrDefaultAsync(x => x.Id == requestId);
-                if (tv == null)
+                if (tv != null && tv.ChildRequests != null && tv.ChildRequests.Any())
+                {
+                    return new CleanupTarget
+                    {
+                        RequestType = RequestType.TvShow,
+                        RequestId = tv.Id,
+                        Title = tv.Title,
+                        PosterPath = tv.PosterPath,
+                        TheMovieDbId = tv.ExternalProviderId,
+                        TvDbId = tv.TvDbId,
+                        Available = tv.ChildRequests.All(x => x.Available),
+                        AvailableSince = tv.ChildRequests
+                            .Select(x => x.MarkedAsAvailable ?? (x.RequestedDate == default ? (DateTime?)null : x.RequestedDate))
+                            .Where(x => x.HasValue)
+                            .OrderByDescending(x => x.Value)
+                            .FirstOrDefault(),
+                        OwnerUserIds = tv.ChildRequests.Select(x => x.RequestedUserId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList()
+                    };
+                }
+
+                var state = await LoadState();
+                var residualRecord = FindResidualTvCatalogRecord(state, requestId);
+                if (residualRecord == null || !await HasResidualTvSeries(residualRecord))
                 {
                     return null;
                 }
@@ -1533,18 +1669,14 @@ namespace Ombi.Core.Engine
                 return new CleanupTarget
                 {
                     RequestType = RequestType.TvShow,
-                    RequestId = tv.Id,
-                    Title = tv.Title,
-                    PosterPath = tv.PosterPath,
-                    TheMovieDbId = tv.ExternalProviderId,
-                    TvDbId = tv.TvDbId,
-                    Available = tv.ChildRequests.Any() && tv.ChildRequests.All(x => x.Available),
-                    AvailableSince = tv.ChildRequests
-                        .Select(x => x.MarkedAsAvailable ?? (x.RequestedDate == default ? (DateTime?)null : x.RequestedDate))
-                        .Where(x => x.HasValue)
-                        .OrderByDescending(x => x.Value)
-                        .FirstOrDefault(),
-                    OwnerUserIds = tv.ChildRequests.Select(x => x.RequestedUserId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList()
+                    RequestId = residualRecord.MediaRequestId,
+                    Title = residualRecord.Title,
+                    PosterPath = residualRecord.PosterPath,
+                    TheMovieDbId = residualRecord.TheMovieDbId,
+                    TvDbId = residualRecord.TvDbId,
+                    Available = true,
+                    AvailableSince = residualRecord.AvailableSince,
+                    OwnerUserIds = (residualRecord.OwnerUserIds ?? new List<string>()).ToList()
                 };
             }
 
@@ -1940,6 +2072,40 @@ namespace Ombi.Core.Engine
             return record.Origin == MediaCleanupOrigin.OwnRequest
                 ? settings.OwnRequestRemoval != OwnRequestRemovalMode.Off
                 : settings.CommunityCleanup != CommunityCleanupMode.Off;
+        }
+
+        private static string GetTvCleanupIdentityKey(MediaCleanupRecord record)
+        {
+            if (record.TvDbId > 0)
+            {
+                return $"tvdb:{record.TvDbId}";
+            }
+            if (record.TheMovieDbId > 0)
+            {
+                return $"tmdb:{record.TheMovieDbId}";
+            }
+            return $"request:{record.MediaRequestId}";
+        }
+
+        private static MediaCleanupRecord FindResidualTvCatalogRecord(MediaCleanupState state, int requestId)
+        {
+            var latestCompleted = state.Requests
+                .Where(x => x.RequestType == RequestType.TvShow &&
+                            x.MediaRequestId == requestId &&
+                            x.Status == MediaCleanupStatus.Completed)
+                .OrderByDescending(x => x.CompletedAt ?? x.CreatedAt)
+                .FirstOrDefault();
+
+            return IsPartialTvCleanup(latestCompleted) ? latestCompleted : null;
+        }
+
+        private async Task<bool> HasResidualTvSeries(MediaCleanupRecord record)
+        {
+            return await _sonarrCache.GetAll()
+                .AsNoTracking()
+                .AnyAsync(x =>
+                    (record.TvDbId > 0 && x.TvDbId == record.TvDbId) ||
+                    (record.TheMovieDbId > 0 && x.TheMovieDbId == record.TheMovieDbId));
         }
 
         private static bool IsAgeEligible(DateTime? availableSince, int minimumDays, DateTime now)
