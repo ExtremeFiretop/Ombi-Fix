@@ -33,6 +33,11 @@ describe('IdentityService', () => {
     expect(mockHttp.get).toHaveBeenCalledWith('/api/v1/Identity/', expect.anything());
   });
 
+  it('should POST for recordActivity', () => {
+    service.recordActivity();
+    expect(mockHttp.post).toHaveBeenCalledWith('/api/v1/Identity/activity', null, expect.anything());
+  });
+
   it('should call GET for getAccessToken', () => {
     service.getAccessToken();
     expect(mockHttp.get).toHaveBeenCalledWith('/api/v1/Identity/accesstoken', expect.anything());

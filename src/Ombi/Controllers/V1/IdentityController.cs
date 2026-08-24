@@ -302,6 +302,18 @@ namespace Ombi.Controllers.V1
         }
 
         /// <summary>
+        /// Lightweight authenticated endpoint used by the web client to report active use.
+        /// UserActivityMiddleware performs the throttled LastActive update before this action runs.
+        /// </summary>
+        [HttpPost("activity")]
+        [Authorize]
+        [ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult RecordActivity()
+        {
+            return Ok();
+        }
+
+        /// <summary>
         /// Sets the current users language
         /// </summary>
         [HttpPost("language")]

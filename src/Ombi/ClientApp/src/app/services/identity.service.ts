@@ -20,6 +20,10 @@ export class IdentityService extends ServiceHelpers {
         return this.http.get<IUser>(this.url,  {headers: this.headers});
     }
 
+    public recordActivity(): Observable<void> {
+        return this.http.post<void>(`${this.url}activity`, null, {headers: this.headers});
+    }
+
     public getAccessToken(): Observable<string> {
         return this.http.get<string>(`${this.url}accesstoken`,  {headers: this.headers});
     }

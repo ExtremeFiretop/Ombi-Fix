@@ -44,6 +44,8 @@ export class AppComponent implements OnInit {
     public favicon: string;
 
     private hubConnected: boolean;
+    private readonly activityIntervalMs = 60 * 1000;
+    private lastActivitySentAt = 0;
 
     @HostBinding('class') public componentCssClass;
 
@@ -124,14 +126,44 @@ export class AppComponent implements OnInit {
         });
         this.settingsService.voteEnabled().subscribe(x => this.voteEnabled = x);
 
+        // SPA route changes and ordinary user input do not always cause a fresh API request.
+        // Generate a lightweight authenticated heartbeat while the user is actively using Ombi.
+        this.document.addEventListener("click", this.recordActivity, true);
+        this.document.addEventListener("keydown", this.recordActivity, true);
+        this.document.addEventListener("visibilitychange", this.recordVisibleActivity);
+
         this.router.events.subscribe((event: NavigationStart) => {
             this.currentUrl = event.url;
             if (event instanceof NavigationStart) {
                 this.isAdmin = this.authService.hasRole("admin");
                 this.showNav = this.authService.loggedIn();
+                this.recordActivity();
             }
         });
     }
+
+    private readonly recordVisibleActivity = () => {
+        if (this.document.visibilityState === "visible") {
+            this.recordActivity();
+        }
+    };
+
+    private readonly recordActivity = () => {
+        if (!this.authService.loggedIn()) {
+            return;
+        }
+
+        const now = Date.now();
+        if (now - this.lastActivitySentAt < this.activityIntervalMs) {
+            return;
+        }
+
+        this.lastActivitySentAt = now;
+        this.identity.recordActivity().subscribe({
+            // Activity tracking is best-effort and must never interrupt normal UI use.
+            error: () => undefined
+        });
+    };
 
     public logOut() {
         this.authService.logout();
