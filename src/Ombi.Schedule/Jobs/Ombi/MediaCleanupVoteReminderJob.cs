@@ -24,6 +24,7 @@ namespace Ombi.Schedule.Jobs.Ombi
         private readonly ISettingsService<MediaCleanupState> _cleanupState;
         private readonly ISettingsService<EmailNotificationSettings> _emailSettings;
         private readonly ISettingsService<CustomizationSettings> _customizationSettings;
+        private readonly ISettingsService<OmbiSettings> _ombiSettings;
         private readonly UserManager<OmbiUser> _userManager;
         private readonly IEmailProvider _emailProvider;
         private readonly ILogger<MediaCleanupVoteReminderJob> _logger;
@@ -33,6 +34,7 @@ namespace Ombi.Schedule.Jobs.Ombi
             ISettingsService<MediaCleanupState> cleanupState,
             ISettingsService<EmailNotificationSettings> emailSettings,
             ISettingsService<CustomizationSettings> customizationSettings,
+            ISettingsService<OmbiSettings> ombiSettings,
             UserManager<OmbiUser> userManager,
             IEmailProvider emailProvider,
             ILogger<MediaCleanupVoteReminderJob> logger)
@@ -41,6 +43,7 @@ namespace Ombi.Schedule.Jobs.Ombi
             _cleanupState = cleanupState;
             _emailSettings = emailSettings;
             _customizationSettings = customizationSettings;
+            _ombiSettings = ombiSettings;
             _userManager = userManager;
             _emailProvider = emailProvider;
             _logger = logger;
@@ -126,7 +129,10 @@ namespace Ombi.Schedule.Jobs.Ombi
 
             _customizationSettings.ClearCache();
             var customization = await _customizationSettings.GetSettingsAsync();
-            var cleanupUrl = customization?.AddToUrl("cleanup");
+            _ombiSettings.ClearCache();
+            var ombiSettings = await _ombiSettings.GetSettingsAsync();
+            var cleanupUrl = BuildCleanupUrl(customization?.ApplicationUrl, ombiSettings?.BaseUrl);
+            _logger.LogDebug("Media Cleanup vote reminder URL resolved to {CleanupUrl}", cleanupUrl);
             var usersWithPendingVotes = 0;
             var attempted = 0;
             var sent = 0;
@@ -173,6 +179,30 @@ namespace Ombi.Schedule.Jobs.Ombi
             _logger.LogInformation(
                 "Media Cleanup vote reminder completed. ActiveVotes={ActiveVotes}, EligibleUsers={EligibleUsers}, EligibleUsersWithEmail={EligibleUsersWithEmail}, UsersWithPendingVotes={UsersWithPendingVotes}, Attempted={Attempted}, Sent={Sent}, Failed={Failed}, RoleLookupFailures={RoleLookupFailures}",
                 activeVotes.Count, eligibleUsers.Count, eligibleWithEmail.Count, usersWithPendingVotes, attempted, sent, failed, roleLookupFailures);
+        }
+
+        private static string BuildCleanupUrl(string applicationUrl, string baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(applicationUrl))
+            {
+                return null;
+            }
+
+            var normalizedApplicationUrl = applicationUrl.Trim().TrimEnd('/');
+            var normalizedBaseUrl = string.IsNullOrWhiteSpace(baseUrl)
+                ? string.Empty
+                : "/" + baseUrl.Trim().Trim('/');
+
+            // ApplicationUrl is commonly configured as just the public origin while
+            // OmbiSettings.BaseUrl contains a reverse-proxy path such as /requests.
+            // Do not append that path twice when ApplicationUrl already includes it.
+            if (normalizedBaseUrl.Length > 0 &&
+                normalizedApplicationUrl.EndsWith(normalizedBaseUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedBaseUrl = string.Empty;
+            }
+
+            return $"{normalizedApplicationUrl}{normalizedBaseUrl}/cleanup";
         }
 
         private static bool HasCleanupVotingRole(IEnumerable<string> roles)
