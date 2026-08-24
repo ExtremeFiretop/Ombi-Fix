@@ -1,4 +1,4 @@
-## [4.60.26](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.25...v4.60.26) (2026-08-24)
+## [4.60.27](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.25...v4.60.27) (2026-08-24)
 
 
 
