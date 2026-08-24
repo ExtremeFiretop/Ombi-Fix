@@ -29,35 +29,24 @@ namespace Ombi.Core.Rule.Rules.Request
             if (obj.RequestType == RequestType.TvShow)
             {
                 var tv = (ChildRequests) obj;
-                var tvRequests = Tv.GetChild();
-                var currentRequest = await tvRequests.FirstOrDefaultAsync(x => x.ParentRequest.ExternalProviderId == tv.Id); // the Id on the child is the TheMovieDb at this point
-                if (currentRequest == null)
+                var currentRequests = await Tv.GetChild()
+                    .Where(x => x.ParentRequest.ExternalProviderId == tv.Id) // the Id on the child is TheMovieDb at this point
+                    .ToListAsync();
+                if (currentRequests.Count == 0)
                 {
                     return Success();
                 }
+
                 foreach (var season in tv.SeasonRequests)
                 {
-                    var currentSeasonRequest =
-                        currentRequest.SeasonRequests.FirstOrDefault(x => x.SeasonNumber == season.SeasonNumber);
-                    if (currentSeasonRequest == null)
-                    {
-                        continue;
-                    }
+                    var existingEpisodeNumbers = currentRequests
+                        .SelectMany(x => x.SeasonRequests ?? new List<SeasonRequests>())
+                        .Where(x => x.SeasonNumber == season.SeasonNumber)
+                        .SelectMany(x => x.Episodes ?? new List<EpisodeRequests>())
+                        .Select(x => x.EpisodeNumber)
+                        .ToHashSet();
 
-                    var episodesToRemove = new List<EpisodeRequests>();
-                    foreach (var e in season.Episodes)
-                    {
-                        var existingEpRequest = currentSeasonRequest.Episodes.FirstOrDefault(x => x.EpisodeNumber == e.EpisodeNumber);
-                        if (existingEpRequest != null)
-                        {
-                            episodesToRemove.Add(e);
-                        }
-                    }
-
-                    episodesToRemove.ForEach(x =>
-                    {
-                        season.Episodes.Remove(x);
-                    });
+                    season.Episodes.RemoveAll(x => existingEpisodeNumbers.Contains(x.EpisodeNumber));
                 }
 
                 var anyEpisodes = tv.SeasonRequests.SelectMany(x => x.Episodes).Any();

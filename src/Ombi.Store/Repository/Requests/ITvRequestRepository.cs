@@ -11,6 +11,8 @@ namespace Ombi.Store.Repository.Requests
         OmbiContext Db { get; }
         Task<ChildRequests> AddChild(ChildRequests request);
         Task DeleteChild(ChildRequests request);
+        Task DeleteRequest(TvRequests request);
+        Task<int> CleanupOrphanedRequestData();
         IQueryable<TvRequests> Get();
         IQueryable<TvRequests> GetLite();
         IQueryable<TvRequests> Get(string userId);

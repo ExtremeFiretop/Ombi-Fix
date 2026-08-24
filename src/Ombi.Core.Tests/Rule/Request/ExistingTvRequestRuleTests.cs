@@ -134,6 +134,63 @@ namespace Ombi.Core.Tests.Rule.Request
         }
 
         [Test]
+        public async Task RequestShow_EpisodesRequestedByDifferentChildren_AreAllRemoved()
+        {
+            var childRequests = new List<ChildRequests>
+            {
+                new ChildRequests
+                {
+                    ParentRequest = new TvRequests { ExternalProviderId = 1 },
+                    SeasonRequests = new List<SeasonRequests>
+                    {
+                        new SeasonRequests
+                        {
+                            SeasonNumber = 1,
+                            Episodes = new List<EpisodeRequests> { new EpisodeRequests { EpisodeNumber = 1 } }
+                        }
+                    }
+                },
+                new ChildRequests
+                {
+                    ParentRequest = new TvRequests { ExternalProviderId = 1 },
+                    SeasonRequests = new List<SeasonRequests>
+                    {
+                        new SeasonRequests
+                        {
+                            SeasonNumber = 1,
+                            Episodes = new List<EpisodeRequests> { new EpisodeRequests { EpisodeNumber = 2 } }
+                        }
+                    }
+                }
+            };
+            TvRequestRepo.Setup(x => x.GetChild()).Returns(childRequests.AsQueryable().BuildMock());
+
+            var req = new ChildRequests
+            {
+                RequestType = RequestType.TvShow,
+                Id = 1,
+                SeasonRequests = new List<SeasonRequests>
+                {
+                    new SeasonRequests
+                    {
+                        SeasonNumber = 1,
+                        Episodes = new List<EpisodeRequests>
+                        {
+                            new EpisodeRequests { EpisodeNumber = 1 },
+                            new EpisodeRequests { EpisodeNumber = 2 },
+                            new EpisodeRequests { EpisodeNumber = 3 },
+                        }
+                    }
+                }
+            };
+
+            var result = await Rule.Execute(req);
+
+            Assert.That(result.Success, Is.True);
+            Assert.That(req.SeasonRequests.Single().Episodes.Select(x => x.EpisodeNumber), Is.EqualTo(new[] { 3 }));
+        }
+
+        [Test]
         public async Task RequestShow_NewSeasonRequest_IsSuccessful()
         {
             SetupMockData();

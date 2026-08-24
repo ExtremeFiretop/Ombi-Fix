@@ -46,13 +46,36 @@ namespace Ombi.Schedule.Jobs.Plex
                 {
                     return;
                 }
+
                 await _notification.SendNotificationToAdmins("Plex Episode Sync Started");
 
-                foreach (var server in s.Servers)
+                var servers = s.Servers ?? new List<PlexServers>();
+                var observedEpisodeKeys = new HashSet<string>();
+                var fullSnapshotComplete = servers.Count > 0;
+
+                foreach (var server in servers)
                 {
-                    await Cache(server);
+                    try
+                    {
+                        observedEpisodeKeys.UnionWith(await Cache(server));
+                    }
+                    catch (Exception e)
+                    {
+                        fullSnapshotComplete = false;
+                        _log.LogWarning(LoggingEvents.PlexEpisodeCacher, e,
+                            "Plex episode snapshot failed for server {ServerName}; stale episode cache entries will be preserved.",
+                            server.Name);
+                    }
                 }
 
+                if (fullSnapshotComplete)
+                {
+                    await ReconcileEpisodeCache(observedEpisodeKeys);
+                }
+                else
+                {
+                    _log.LogWarning("Plex episode snapshot was incomplete; stale Plex episode cache entries were preserved.");
+                }
             }
             catch (Exception e)
             {
@@ -60,82 +83,124 @@ namespace Ombi.Schedule.Jobs.Plex
                 _log.LogError(LoggingEvents.Cacher, e, "Caching Episodes Failed");
             }
 
-
             _log.LogInformation("Plex Episode Sync Finished - Triggering Metadata refresh");
             await OmbiQuartz.TriggerJob(nameof(IRefreshMetadata), "System");
 
             await _notification.SendNotificationToAdmins("Plex Episode Sync Finished");
         }
 
-        private async Task Cache(PlexServers settings)
+        private async Task<HashSet<string>> Cache(PlexServers settings)
         {
             if (!Validate(settings))
             {
-                _log.LogWarning("Validation failed");
-                return;
+                throw new InvalidOperationException($"Plex episode sync validation failed for server '{settings?.Name}'.");
             }
 
-            // Get the librarys and then get the tv section
             var sections = await _api.GetLibrarySections(settings.PlexAuthToken, settings.FullUri);
+            if (sections?.MediaContainer == null)
+            {
+                throw new InvalidOperationException($"Plex returned no library-section snapshot for server '{settings.Name}'.");
+            }
 
-            // Filter the libSections
-            var tvSections = sections.MediaContainer.Directory.Where(x => x.type.Equals(PlexMediaType.Show.ToString(), StringComparison.CurrentCultureIgnoreCase));
+            var observedEpisodeKeys = new HashSet<string>();
+            var tvSections = sections.MediaContainer.Directory
+                ?.Where(x => string.Equals(x.type, PlexMediaType.Show.ToString(), StringComparison.CurrentCultureIgnoreCase))
+                ?? Enumerable.Empty<Directory>();
 
             foreach (var section in tvSections)
             {
                 if (settings.PlexSelectedLibraries.Any())
                 {
-                    // Are any enabled?
                     if (settings.PlexSelectedLibraries.Any(x => x.Enabled))
                     {
-                        // Make sure we have enabled this 
                         var keys = settings.PlexSelectedLibraries.Where(x => x.Enabled).Select(x => x.Key.ToString())
                             .ToList();
                         if (!keys.Contains(section.key))
                         {
-                            // We are not monitoring this lib
                             continue;
                         }
                     }
                 }
 
-                // Get the episodes
-                await GetEpisodes(settings, section);
+                observedEpisodeKeys.UnionWith(await GetEpisodes(settings, section));
             }
 
+            return observedEpisodeKeys;
         }
 
-        private async Task GetEpisodes(PlexServers settings, Directory section)
+        private async Task<HashSet<string>> GetEpisodes(PlexServers settings, Directory section)
         {
+            var observedEpisodeKeys = new HashSet<string>();
             var currentPosition = 0;
             var resultCount = settings.EpisodeBatchSize == 0 ? 150 : settings.EpisodeBatchSize;
             var currentEpisodes = _repo.GetAllEpisodes().Cast<PlexEpisode>();
             var episodes = await _api.GetAllEpisodes(settings.PlexAuthToken, settings.FullUri, section.key, currentPosition, resultCount);
-            _log.LogInformation(LoggingEvents.PlexEpisodeCacher, $"Total Epsiodes found for {episodes.MediaContainer.librarySectionTitle} = {episodes.MediaContainer.totalSize}");
+            if (episodes?.MediaContainer == null)
+            {
+                throw new InvalidOperationException(
+                    $"Plex returned no episode snapshot for server '{settings.Name}', library '{section.key}'.");
+            }
 
-            // Delete all the episodes because we cannot uniquly match an episode to series every time, 
-            // see comment below.
+            _log.LogInformation(LoggingEvents.PlexEpisodeCacher,
+                $"Total Epsiodes found for {episodes.MediaContainer.librarySectionTitle} = {episodes.MediaContainer.totalSize}");
 
-            // 12.03.2017 - I think we should be able to match them now
-            //await _repo.ExecuteSql("DELETE FROM PlexEpisode");
-
-            await ProcessEpsiodes(episodes?.MediaContainer?.Metadata ?? new Metadata[] { }, currentEpisodes);
+            AddObservedEpisodeKeys(observedEpisodeKeys, episodes.MediaContainer.Metadata);
+            await ProcessEpsiodes(episodes.MediaContainer.Metadata ?? Array.Empty<Metadata>(), currentEpisodes);
             currentPosition += resultCount;
 
             while (currentPosition < episodes.MediaContainer.totalSize)
             {
                 var ep = await _api.GetAllEpisodes(settings.PlexAuthToken, settings.FullUri, section.key, currentPosition,
                     resultCount);
+                if (ep?.MediaContainer == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Plex returned an incomplete episode page for server '{settings.Name}', library '{section.key}', offset {currentPosition}.");
+                }
 
-                await ProcessEpsiodes(ep?.MediaContainer?.Metadata ?? new Metadata[] { }, currentEpisodes);
-                _log.LogInformation(LoggingEvents.PlexEpisodeCacher, $"Processed {resultCount} more episodes. Total Remaining {episodes.MediaContainer.totalSize - currentPosition}");
+                AddObservedEpisodeKeys(observedEpisodeKeys, ep.MediaContainer.Metadata);
+                await ProcessEpsiodes(ep.MediaContainer.Metadata ?? Array.Empty<Metadata>(), currentEpisodes);
+                _log.LogInformation(LoggingEvents.PlexEpisodeCacher,
+                    $"Processed {resultCount} more episodes. Total Remaining {episodes.MediaContainer.totalSize - currentPosition}");
                 currentPosition += resultCount;
             }
 
-            // we have now finished.
             _log.LogInformation(LoggingEvents.PlexEpisodeCacher, "We have finished caching the episodes.");
             await _repo.SaveChangesAsync();
+            return observedEpisodeKeys;
         }
+
+        private async Task ReconcileEpisodeCache(HashSet<string> observedEpisodeKeys)
+        {
+            var cachedEpisodes = await _repo.GetAllEpisodes().Cast<PlexEpisode>().ToListAsync();
+            var staleEpisodes = cachedEpisodes
+                .Where(x => string.IsNullOrWhiteSpace(x.Key) || !observedEpisodeKeys.Contains(x.Key))
+                .ToList();
+
+            if (staleEpisodes.Count > 0)
+            {
+                await _repo.DeleteEpisodeRange(staleEpisodes);
+            }
+
+            _log.LogInformation(
+                "Plex episode reconciliation completed. Observed={ObservedCount}, Removed={RemovedCount}",
+                observedEpisodeKeys.Count,
+                staleEpisodes.Count);
+        }
+
+        private static void AddObservedEpisodeKeys(HashSet<string> observedEpisodeKeys, IEnumerable<Metadata> episodes)
+        {
+            foreach (var episode in episodes ?? Enumerable.Empty<Metadata>())
+            {
+                if (string.IsNullOrWhiteSpace(episode.ratingKey))
+                {
+                    continue;
+                }
+
+                observedEpisodeKeys.Add(episode.ratingKey);
+            }
+        }
+
 
         public async Task<HashSet<PlexEpisode>> ProcessEpsiodes(Metadata[] episodes, IQueryable<PlexEpisode> currentEpisodes)
         {

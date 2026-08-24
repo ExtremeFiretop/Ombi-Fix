@@ -63,14 +63,14 @@ namespace Ombi.Core.Tests.Engine
             };
 
             repo.Setup(x => x.Get()).Returns(new List<TvRequests> { request }.AsQueryable().BuildMock());
-            repo.Setup(x => x.Delete(request)).Returns(Task.CompletedTask);
+            repo.Setup(x => x.DeleteRequest(request)).Returns(Task.CompletedTask);
             mocker.GetMock<IMediaCacheService>().Setup(x => x.Purge()).Returns(Task.CompletedTask);
             mocker.GetMock<INotificationHelper>().Setup(x => x.Notify(It.IsAny<NotificationOptions>())).Returns(Task.CompletedTask);
 
             await subject.RemoveTvRequest(7);
 
             mocker.GetMock<INotificationHelper>().Verify(x => x.Notify(It.IsAny<NotificationOptions>()), Times.Never);
-            repo.Verify(x => x.Delete(request), Times.Once);
+            repo.Verify(x => x.DeleteRequest(request), Times.Once);
         }
 
         [Test]
@@ -91,7 +91,7 @@ namespace Ombi.Core.Tests.Engine
             };
 
             repo.Setup(x => x.Get()).Returns(new List<TvRequests> { request }.AsQueryable().BuildMock());
-            repo.Setup(x => x.Delete(request)).Returns(Task.CompletedTask);
+            repo.Setup(x => x.DeleteRequest(request)).Returns(Task.CompletedTask);
             mocker.GetMock<IMediaCacheService>().Setup(x => x.Purge()).Returns(Task.CompletedTask);
             mocker.GetMock<INotificationHelper>().Setup(x => x.Notify(It.IsAny<NotificationOptions>())).Returns(Task.CompletedTask);
 

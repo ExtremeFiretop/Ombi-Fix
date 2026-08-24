@@ -757,18 +757,20 @@ namespace Ombi.Core.Engine
                 }
             });
 
-            TvRepository.Db.ChildRequests.Remove(request);
-            var all = TvRepository.Db.TvRequests.Include(x => x.ChildRequests);
-            var parent = all.FirstOrDefault(x => x.Id == request.ParentRequestId);
+            var parent = await TvRepository.Get()
+                .FirstOrDefaultAsync(x => x.Id == request.ParentRequestId);
 
-            // Is this the only child? If so delete the parent
-            if (parent.ChildRequests.Count <= 1)
+            // If this is the only child, delete the complete request graph. Otherwise remove only
+            // this child's season/episode graph explicitly. The repository also cleans up legacy
+            // orphan rows left by older databases where cascading deletes were not enforced.
+            if (parent != null && parent.ChildRequests.Count <= 1)
             {
-                // Delete the parent
-                TvRepository.Db.TvRequests.Remove(parent);
+                await TvRepository.DeleteRequest(parent);
             }
-
-            await TvRepository.Db.SaveChangesAsync();
+            else
+            {
+                await TvRepository.DeleteChild(request);
+            }
             await _mediaCacheService.Purge();
 
             return new RequestEngineResult
@@ -803,7 +805,7 @@ namespace Ombi.Core.Engine
                 });
             }
 
-            await TvRepository.Delete(request);
+            await TvRepository.DeleteRequest(request);
             await _mediaCacheService.Purge();
         }
 

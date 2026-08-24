@@ -121,7 +121,15 @@ namespace Ombi.Schedule.Jobs.Plex
                 }
                 else
                 {
-                    await StartTheCache(plexSettings, false);
+                    processedContent = await StartTheCache(plexSettings, false);
+                    if (processedContent.FullSnapshotComplete)
+                    {
+                        await ReconcilePlexContentCache(processedContent.ObservedContentKeys);
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Plex full content snapshot was incomplete; stale Plex cache entries were preserved.");
+                    }
                 }
             }
             catch (Exception e)
@@ -155,29 +163,40 @@ namespace Ombi.Schedule.Jobs.Plex
         private async Task<ProcessedContent> StartTheCache(PlexSettings plexSettings, bool recentlyAddedSearch)
         {
             var processedContent = new ProcessedContent();
-            foreach (var servers in plexSettings.Servers ?? new List<PlexServers>())
+            var servers = plexSettings.Servers ?? new List<PlexServers>();
+
+            if (!recentlyAddedSearch && servers.Count == 0)
+            {
+                Logger.LogWarning("Plex full content sync has no configured servers; cache reconciliation was skipped.");
+                return processedContent;
+            }
+
+            var allServersSucceeded = true;
+            foreach (var server in servers)
             {
                 try
                 {
-                    Logger.LogInformation("Starting to cache the content on server {0}", servers.Name);
+                    Logger.LogInformation("Starting to cache the content on server {0}", server.Name);
 
+                    var serverResult = await ProcessServer(server, recentlyAddedSearch);
                     if (recentlyAddedSearch)
                     {
-                        // If it's recently added search then we want the results to pass to the metadata job
-                        // This way the metadata job is smaller in size to process, it only need to look at newly added shit
-                        return await ProcessServer(servers, true);
+                        // Recently-added scans intentionally return only the first server's incremental
+                        // result and are never used for destructive cache reconciliation.
+                        return serverResult;
                     }
-                    else
-                    {
-                        await ProcessServer(servers, false);
-                    }
+
+                    processedContent.ObservedContentKeys.UnionWith(serverResult.ObservedContentKeys);
                 }
                 catch (Exception e)
                 {
-                    Logger.LogWarning(LoggingEvents.PlexContentCacher, e, "Exception thrown when attempting to cache the Plex Content in server {0}", servers.Name);
+                    allServersSucceeded = false;
+                    Logger.LogWarning(LoggingEvents.PlexContentCacher, e,
+                        "Exception thrown when attempting to cache the Plex Content in server {0}", server.Name);
                 }
             }
 
+            processedContent.FullSnapshotComplete = allServersSucceeded;
             return processedContent;
         }
 
@@ -190,6 +209,18 @@ namespace Ombi.Schedule.Jobs.Plex
             var allContent = await GetAllContent(servers, recentlyAddedSearch);
             Logger.LogDebug("We found {0} items", allContent.Count);
 
+            if (!recentlyAddedSearch)
+            {
+                foreach (var key in allContent
+                    .Where(x => string.Equals(x.viewGroup, PlexMediaType.Movie.ToString(), StringComparison.InvariantCultureIgnoreCase)
+                             || string.Equals(x.viewGroup, PlexMediaType.Show.ToString(), StringComparison.InvariantCultureIgnoreCase))
+                    .SelectMany(x => x.Metadata ?? Array.Empty<Metadata>())
+                    .Select(x => x.ratingKey)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)))
+                {
+                    retVal.ObservedContentKeys.Add(key);
+                }
+            }
 
             // Let's now process this.
             // Use custom comparer to prevent duplicate entries based on Key property
@@ -820,48 +851,79 @@ namespace Ombi.Schedule.Jobs.Plex
         {
             var sections = await PlexApi.GetLibrarySections(plexSettings.PlexAuthToken, plexSettings.FullUri);
 
-            var libs = new List<Mediacontainer>();
-            if (sections != null)
+            if (sections?.MediaContainer == null)
             {
-                foreach (var dir in sections.MediaContainer.Directory ?? new List<Directory>())
+                throw new InvalidOperationException($"Plex returned no library-section snapshot for server '{plexSettings.Name}'.");
+            }
+
+            var libs = new List<Mediacontainer>();
+            foreach (var dir in sections.MediaContainer.Directory ?? new List<Directory>())
+            {
+                if (plexSettings.PlexSelectedLibraries.Any())
                 {
-                    if (plexSettings.PlexSelectedLibraries.Any())
+                    if (plexSettings.PlexSelectedLibraries.Any(x => x.Enabled))
                     {
-                        if (plexSettings.PlexSelectedLibraries.Any(x => x.Enabled))
+                        // Only get the enabled libs
+                        var keys = plexSettings.PlexSelectedLibraries.Where(x => x.Enabled)
+                            .Select(x => x.Key.ToString()).ToList();
+                        if (!keys.Contains(dir.key))
                         {
-                            // Only get the enabled libs
-                            var keys = plexSettings.PlexSelectedLibraries.Where(x => x.Enabled)
-                                .Select(x => x.Key.ToString()).ToList();
-                            if (!keys.Contains(dir.key))
-                            {
-                                Logger.LogDebug("Lib {0} is not monitored, so skipping", dir.key);
-                                // We are not monitoring this lib
-                                continue;
-                            }
+                            Logger.LogDebug("Lib {0} is not monitored, so skipping", dir.key);
+                            // We are not monitoring this lib
+                            continue;
                         }
+                    }
+                }
+
+                if (recentlyAddedSearch)
+                {
+                    var container = await PlexApi.GetRecentlyAdded(plexSettings.PlexAuthToken, plexSettings.FullUri,
+                        dir.key);
+                    if (container != null)
+                    {
+                        libs.Add(container.MediaContainer);
+                    }
+                }
+                else
+                {
+                    var lib = await PlexApi.GetLibrary(plexSettings.PlexAuthToken, plexSettings.FullUri, dir.key);
+                    if (lib?.MediaContainer == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Plex returned no library snapshot for server '{plexSettings.Name}', library '{dir.key}'.");
                     }
 
-                    if (recentlyAddedSearch)
-                    {
-                        var container = await PlexApi.GetRecentlyAdded(plexSettings.PlexAuthToken, plexSettings.FullUri,
-                            dir.key);
-                        if (container != null)
-                        {
-                            libs.Add(container.MediaContainer);
-                        }
-                    }
-                    else
-                    {
-                        var lib = await PlexApi.GetLibrary(plexSettings.PlexAuthToken, plexSettings.FullUri, dir.key);
-                        if (lib != null)
-                        {
-                            libs.Add(lib.MediaContainer);
-                        }
-                    }
+                    libs.Add(lib.MediaContainer);
                 }
             }
 
             return libs;
+        }
+
+        private async Task ReconcilePlexContentCache(HashSet<string> observedContentKeys)
+        {
+            var cachedContent = await Repo.GetAll()
+                .Include(x => x.Seasons)
+                .Include(x => x.Episodes)
+                .ToListAsync();
+
+            var staleContent = cachedContent
+                .Where(x => string.IsNullOrWhiteSpace(x.Key) || !observedContentKeys.Contains(x.Key))
+                .ToList();
+
+            if (staleContent.Count == 0)
+            {
+                Logger.LogInformation(
+                    "Plex full content reconciliation completed. Observed={ObservedCount}, Removed=0",
+                    observedContentKeys.Count);
+                return;
+            }
+
+            await Repo.DeleteContentRange(staleContent);
+            Logger.LogInformation(
+                "Plex full content reconciliation completed. Observed={ObservedCount}, Removed={RemovedCount}",
+                observedContentKeys.Count,
+                staleContent.Count);
         }
 
         private async Task NotifyClient(string message)

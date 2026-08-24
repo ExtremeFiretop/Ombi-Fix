@@ -8,13 +8,15 @@ using Ombi.Core.Models.Search;
 using Ombi.Core.Rule.Interfaces;
 using Ombi.Helpers;
 using Ombi.Store.Entities.Requests;
+using Microsoft.Extensions.Logging;
 
 namespace Ombi.Core.Rule
 {
     public class RuleEvaluator : IRuleEvaluator
     {
-        public RuleEvaluator(IServiceProvider provider)
+        public RuleEvaluator(IServiceProvider provider, ILogger<RuleEvaluator> logger)
         {
+            _logger = logger;
             RequestRules = new List<IRules<BaseRequest>>();
             SearchRules = new List<IRules<SearchViewModel>>();
             SpecificRules = new List<ISpecificRule<object>>();
@@ -35,6 +37,8 @@ namespace Ombi.Core.Rule
             }
         }
 
+        private readonly ILogger<RuleEvaluator> _logger;
+
         private List<IRules<BaseRequest>> RequestRules { get; }
         private List<IRules<SearchViewModel>> SearchRules { get; }
         private List<ISpecificRule<object>> SpecificRules { get; }
@@ -46,6 +50,15 @@ namespace Ombi.Core.Rule
             {
                 var result = await rule.Execute(obj);
                 results.Add(result);
+
+                if (!result.Success && result.ErrorCode == ErrorCode.EpisodesAlreadyRequested)
+                {
+                    _logger.LogInformation(
+                        "TV episode request was rejected by {RuleName}. ErrorCode={ErrorCode}, Message={Message}",
+                        rule.GetType().Name,
+                        result.ErrorCode,
+                        result.Message);
+                }
             }
 
             return results;

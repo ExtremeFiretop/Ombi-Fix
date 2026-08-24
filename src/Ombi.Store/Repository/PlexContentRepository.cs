@@ -154,6 +154,18 @@ namespace Ombi.Store.Repository
             await InternalSaveChanges();
         }
 
+        public async Task DeleteEpisodeRange(IEnumerable<PlexEpisode> content)
+        {
+            var episodes = content?.ToList() ?? new List<PlexEpisode>();
+            if (episodes.Count == 0)
+            {
+                return;
+            }
+
+            Db.PlexEpisode.RemoveRange(episodes);
+            await InternalSaveChanges();
+        }
+
         public async Task DeleteContent(PlexServerContent content)
         {
             if (content == null)
@@ -176,6 +188,38 @@ namespace Ombi.Store.Repository
             }
 
             Db.PlexServerContent.Remove(content);
+            await InternalSaveChanges();
+        }
+
+
+        public async Task DeleteContentRange(IEnumerable<PlexServerContent> content)
+        {
+            var items = content?.ToList() ?? new List<PlexServerContent>();
+            if (items.Count == 0)
+            {
+                return;
+            }
+
+            var seasons = items
+                .Where(x => x.Seasons != null)
+                .SelectMany(x => x.Seasons)
+                .ToList();
+            if (seasons.Count > 0)
+            {
+                Db.PlexSeasonsContent.RemoveRange(seasons);
+            }
+
+            var episodes = items
+                .Where(x => x.Episodes != null)
+                .SelectMany(x => x.Episodes)
+                .OfType<PlexEpisode>()
+                .ToList();
+            if (episodes.Count > 0)
+            {
+                Db.PlexEpisode.RemoveRange(episodes);
+            }
+
+            Db.PlexServerContent.RemoveRange(items);
             await InternalSaveChanges();
         }
 
