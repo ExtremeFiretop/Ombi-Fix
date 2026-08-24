@@ -6,6 +6,7 @@ import { MatCardModule } from "@angular/material/card";
 import { MatChipsModule } from "@angular/material/chips";
 import { MatIconModule } from "@angular/material/icon";
 import { MatFormFieldModule } from "@angular/material/form-field";
+import { MatDialog, MatDialogModule } from "@angular/material/dialog";
 import { MatSelectModule } from "@angular/material/select";
 import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { MatTooltipModule } from "@angular/material/tooltip";
@@ -25,6 +26,10 @@ import {
 } from "../interfaces";
 import { MediaCleanupService, NotificationService } from "../services";
 import { Subscription } from "rxjs";
+import {
+    MediaCleanupTvSelectionDialogResult,
+    TvCleanupSelectionDialogComponent
+} from "./tv-cleanup-selection-dialog.component";
 
 @Component({
     standalone: true,
@@ -39,9 +44,11 @@ import { Subscription } from "rxjs";
         MatChipsModule,
         MatIconModule,
         MatFormFieldModule,
+        MatDialogModule,
         MatSelectModule,
         MatProgressSpinnerModule,
-        MatTooltipModule
+        MatTooltipModule,
+        TvCleanupSelectionDialogComponent
     ]
 })
 export class MediaCleanupComponent implements OnInit {
@@ -67,7 +74,8 @@ export class MediaCleanupComponent implements OnInit {
 
     constructor(
         private readonly cleanupService: MediaCleanupService,
-        private readonly notificationService: NotificationService) { }
+        private readonly notificationService: NotificationService,
+        private readonly dialog: MatDialog) { }
 
     public ngOnInit(): void {
         this.load();
@@ -161,6 +169,25 @@ export class MediaCleanupComponent implements OnInit {
 
     public voteText(item: IMediaCleanupItem): string {
         return item.cleanup?.myVote === MediaCleanupVoteType.Keep ? "Keep" : "Remove";
+    }
+
+    public cleanupEpisodeSelectionText(cleanup?: IMediaCleanupRequest): string {
+        if (!cleanup || cleanup.entireSeries || !cleanup.selectedEpisodes?.length) {
+            return "";
+        }
+
+        const fullSeasons = new Set(cleanup.selectedSeasons ?? []);
+        const partialEpisodes = cleanup.selectedEpisodes
+            .filter(x => !fullSeasons.has(x.seasonNumber))
+            .sort((a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
+        if (!partialEpisodes.length) {
+            return "";
+        }
+
+        const shown = partialEpisodes.slice(0, 6)
+            .map(x => `S${x.seasonNumber.toString().padStart(2, "0")}E${x.episodeNumber.toString().padStart(2, "0")}`);
+        const remaining = partialEpisodes.length - shown.length;
+        return `Selected episodes: ${shown.join(", ")}${remaining > 0 ? ` +${remaining} more` : ""}`;
     }
 
     public get pendingVoteCount(): number {
@@ -307,6 +334,11 @@ export class MediaCleanupComponent implements OnInit {
     }
 
     public requestOwnRemoval(item: IMediaCleanupItem): void {
+        if (item.requestType === RequestType.tvShow) {
+            this.openTvSelection(item, "own");
+            return;
+        }
+
         const immediate = this.overview.settings.ownRequestRemoval === OwnRequestRemovalMode.ImmediateDeletion;
         if (immediate && !window.confirm(`Permanently remove ${item.title} from the library? Media files will be deleted if that option is enabled.`)) {
             return;
@@ -315,7 +347,46 @@ export class MediaCleanupComponent implements OnInit {
     }
 
     public nominate(item: IMediaCleanupItem): void {
+        if (item.requestType === RequestType.tvShow) {
+            this.openTvSelection(item, "community");
+            return;
+        }
         this.execute(item, this.cleanupService.nominate(item.requestType, item.requestId));
+    }
+
+    private openTvSelection(item: IMediaCleanupItem, action: "own" | "community"): void {
+        const dialogRef = this.dialog.open(TvCleanupSelectionDialogComponent, {
+            width: "900px",
+            maxWidth: "96vw",
+            data: { item, action },
+            panelClass: "modal-panel"
+        });
+
+        dialogRef.afterClosed().subscribe((result?: MediaCleanupTvSelectionDialogResult) => {
+            if (!result) {
+                return;
+            }
+
+            if (action === "own") {
+                const immediate = this.overview.settings.ownRequestRemoval === OwnRequestRemovalMode.ImmediateDeletion;
+                const target = result.selection.entireSeries
+                    ? item.title
+                    : `${result.summary} of ${item.title}`;
+                const warning = result.selection.entireSeries
+                    ? `Permanently remove ${target} from the library? Media files will be deleted if Delete Files is enabled.`
+                    : `Permanently remove ${target}? The selected Sonarr episode files will be deleted and those episodes will be unmonitored.`;
+                if (immediate && !window.confirm(warning)) {
+                    return;
+                }
+                this.execute(
+                    item,
+                    this.cleanupService.requestOwnRemoval(item.requestType, item.requestId, result.selection),
+                    immediate && !result.selection.entireSeries);
+                return;
+            }
+
+            this.execute(item, this.cleanupService.nominate(item.requestType, item.requestId, result.selection));
+        });
     }
 
     public vote(item: IMediaCleanupItem, vote: MediaCleanupVoteType): void {
@@ -329,7 +400,8 @@ export class MediaCleanupComponent implements OnInit {
         if (!item.cleanup) {
             return;
         }
-        if (!window.confirm(`Approve removal of ${item.title}? It will be deleted after the configured grace period.`)) {
+        const target = this.cleanupTargetDescription(item);
+        if (!window.confirm(`Approve removal of ${target}? It will be deleted after the configured grace period.`)) {
             return;
         }
         this.execute(item, this.cleanupService.approve(item.cleanup.id));
@@ -347,7 +419,7 @@ export class MediaCleanupComponent implements OnInit {
         }
 
         if (item.cleanup.status === MediaCleanupStatus.ScheduledForDeletion &&
-            !window.confirm(`Cancel the scheduled removal of ${item.title}? The media will be kept.`)) {
+            !window.confirm(`Cancel the scheduled removal of ${this.cleanupTargetDescription(item)}? The media will be kept.`)) {
             return;
         }
 
@@ -535,7 +607,17 @@ export class MediaCleanupComponent implements OnInit {
         return `${item.requestType}-${item.requestId}`;
     }
 
-    private execute(item: IMediaCleanupItem, request: import("rxjs").Observable<IMediaCleanupActionResult>): void {
+    private cleanupTargetDescription(item: IMediaCleanupItem): string {
+        if (item.requestType !== RequestType.tvShow || !item.cleanup?.scopeLabel || item.cleanup.entireSeries) {
+            return item.title;
+        }
+        return `${item.cleanup.scopeLabel} of ${item.title}`;
+    }
+
+    private execute(
+        item: IMediaCleanupItem,
+        request: import("rxjs").Observable<IMediaCleanupActionResult>,
+        refreshMetrics = false): void {
         const key = this.itemKey(item);
         if (this.busyItemKeys.has(key)) {
             return;
@@ -551,7 +633,7 @@ export class MediaCleanupComponent implements OnInit {
                 }
 
                 this.notificationService.success(result.message);
-                this.refreshItem(item, key);
+                this.refreshItem(item, key, refreshMetrics);
             },
             error: error => {
                 this.busyItemKeys.delete(key);
@@ -560,7 +642,7 @@ export class MediaCleanupComponent implements OnInit {
         });
     }
 
-    private refreshItem(item: IMediaCleanupItem, key: string): void {
+    private refreshItem(item: IMediaCleanupItem, key: string, refreshMetrics = false): void {
         this.cleanupService.getOverviewForRequest(item.requestType, item.requestId).subscribe({
             next: refreshedOverview => {
                 const items = [...(this.overview?.items ?? [])];
@@ -584,6 +666,9 @@ export class MediaCleanupComponent implements OnInit {
                     this.overview = { ...this.overview, items };
                 }
 
+                if (refreshMetrics) {
+                    this.loadMetrics();
+                }
                 this.busyItemKeys.delete(key);
             },
             error: () => {

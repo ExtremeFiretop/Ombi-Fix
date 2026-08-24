@@ -101,6 +101,11 @@
                                 {{ hasVoted(item) ? 'Vote recorded' : 'Vote needed' }}
                             </span>
                             <h4>{{ item.title }}</h4>
+                            <p class="cleanup-scope" *ngIf="item.requestType === RequestType.tvShow && item.cleanup?.scopeLabel">
+                                <mat-icon>video_library</mat-icon>
+                                <span><strong>{{ item.cleanup?.scopeLabel }}</strong><ng-container *ngIf="item.cleanup?.selectedSizeOnDisk"> · {{ formatBytes(item.cleanup?.selectedSizeOnDisk || 0) }}</ng-container></span>
+                            </p>
+                            <p class="metadata" *ngIf="cleanupEpisodeSelectionText(item.cleanup) as episodeScope">{{ episodeScope }}</p>
                             <p class="metadata">
                                 {{ mediaTypeText(item.requestType) }}<span *ngIf="item.releaseDate"> · {{ item.releaseDate | date:'yyyy' }}</span><span *ngIf="item.requestedBy"> · Requested by {{ item.requestedBy }}</span>
                             </p>
@@ -149,6 +154,11 @@
                         <mat-card-content>
                             <span class="attention-label"><mat-icon>approval</mat-icon> Approval required</span>
                             <h4>{{ item.title }}</h4>
+                            <p class="cleanup-scope" *ngIf="item.requestType === RequestType.tvShow && item.cleanup?.scopeLabel">
+                                <mat-icon>video_library</mat-icon>
+                                <span><strong>{{ item.cleanup?.scopeLabel }}</strong><ng-container *ngIf="item.cleanup?.selectedSizeOnDisk"> · {{ formatBytes(item.cleanup?.selectedSizeOnDisk || 0) }}</ng-container></span>
+                            </p>
+                            <p class="metadata" *ngIf="cleanupEpisodeSelectionText(item.cleanup) as episodeScope">{{ episodeScope }}</p>
                             <p class="metadata">{{ item.cleanup?.origin === MediaCleanupOrigin.OwnRequest ? 'Personal removal request' : 'Community vote passed' }}</p>
                             <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
                             <p class="metadata" *ngIf="item.cleanup?.origin === MediaCleanupOrigin.Community">{{ item.cleanup?.deleteVotes }} remove · {{ item.cleanup?.keepVotes }} keep</p>
@@ -183,6 +193,11 @@
                         <mat-card-content>
                             <span class="attention-label grace-label"><mat-icon>schedule</mat-icon> Grace period</span>
                             <h4>{{ item.title }}</h4>
+                            <p class="cleanup-scope" *ngIf="item.requestType === RequestType.tvShow && item.cleanup?.scopeLabel">
+                                <mat-icon>video_library</mat-icon>
+                                <span><strong>{{ item.cleanup?.scopeLabel }}</strong><ng-container *ngIf="item.cleanup?.selectedSizeOnDisk"> · {{ formatBytes(item.cleanup?.selectedSizeOnDisk || 0) }}</ng-container></span>
+                            </p>
+                            <p class="metadata" *ngIf="cleanupEpisodeSelectionText(item.cleanup) as episodeScope">{{ episodeScope }}</p>
                             <p class="metadata">{{ item.cleanup?.origin === MediaCleanupOrigin.Community ? 'Community cleanup passed' : 'Personal removal approved' }}</p>
                             <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
                             <p class="metadata" *ngIf="item.cleanup?.origin === MediaCleanupOrigin.Community">{{ item.cleanup?.deleteVotes }} remove · {{ item.cleanup?.keepVotes }} keep</p>
@@ -296,6 +311,12 @@
                     </ng-container>
 
                     <ng-container *ngIf="item.cleanup as cleanup">
+                        <p class="cleanup-scope" *ngIf="item.requestType === RequestType.tvShow && cleanup.scopeLabel">
+                            <mat-icon>video_library</mat-icon>
+                            <span><strong>{{ cleanup.scopeLabel }}</strong><ng-container *ngIf="cleanup.selectedSizeOnDisk"> · {{ formatBytes(cleanup.selectedSizeOnDisk) }}</ng-container></span>
+                        </p>
+                        <p class="metadata" *ngIf="cleanupEpisodeSelectionText(cleanup) as episodeScope">{{ episodeScope }}</p>
+
                         <div class="cleanup-status">
                             <strong>{{ statusText(cleanup.status) }}</strong>
                             <span *ngIf="cleanup.origin === MediaCleanupOrigin.Community">

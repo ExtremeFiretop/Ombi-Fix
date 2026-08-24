@@ -38,6 +38,47 @@ namespace Ombi.Core.Models.MediaCleanup
         public MediaCleanupRequestViewModel Cleanup { get; set; }
     }
 
+    public class MediaCleanupSelection
+    {
+        public bool EntireSeries { get; set; } = true;
+        public List<MediaCleanupEpisodeSelection> Episodes { get; set; } = new List<MediaCleanupEpisodeSelection>();
+    }
+
+    public class MediaCleanupEpisodeSelection
+    {
+        public int SeasonNumber { get; set; }
+        public int EpisodeNumber { get; set; }
+    }
+
+    public class MediaCleanupTvSelectionViewModel
+    {
+        public bool Result { get; set; }
+        public string Message { get; set; }
+        public int RequestId { get; set; }
+        public string Title { get; set; }
+        public bool DeleteFilesEnabled { get; set; }
+        public long SizeOnDisk { get; set; }
+        public List<MediaCleanupTvSeasonViewModel> Seasons { get; set; } = new List<MediaCleanupTvSeasonViewModel>();
+    }
+
+    public class MediaCleanupTvSeasonViewModel
+    {
+        public int SeasonNumber { get; set; }
+        public long SizeOnDisk { get; set; }
+        public List<MediaCleanupTvEpisodeViewModel> Episodes { get; set; } = new List<MediaCleanupTvEpisodeViewModel>();
+    }
+
+    public class MediaCleanupTvEpisodeViewModel
+    {
+        public int SeasonNumber { get; set; }
+        public int EpisodeNumber { get; set; }
+        public string Title { get; set; }
+        public DateTime? AirDateUtc { get; set; }
+        public bool HasFile { get; set; }
+        public int EpisodeFileId { get; set; }
+        public long SizeOnDisk { get; set; }
+    }
+
     public class MediaCleanupRequestViewModel
     {
         public string Id { get; set; }
@@ -51,6 +92,12 @@ namespace Ombi.Core.Models.MediaCleanup
         public DateTime? VotingEndsAt { get; set; }
         public DateTime? ScheduledForDeletionAt { get; set; }
         public string FailureReason { get; set; }
+        public bool EntireSeries { get; set; }
+        public string ScopeLabel { get; set; }
+        public int SelectedEpisodeCount { get; set; }
+        public long SelectedSizeOnDisk { get; set; }
+        public List<MediaCleanupEpisodeSelection> SelectedEpisodes { get; set; } = new List<MediaCleanupEpisodeSelection>();
+        public List<int> SelectedSeasons { get; set; } = new List<int>();
         public List<MediaCleanupVoterViewModel> Voters { get; set; } = new List<MediaCleanupVoterViewModel>();
     }
 

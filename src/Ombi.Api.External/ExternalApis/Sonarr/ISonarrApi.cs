@@ -15,6 +15,8 @@ namespace Ombi.Api.External.ExternalApis.Sonarr
         Task<bool> DeleteSeries(int id, string apiKey, string baseUrl, bool deleteFiles, bool addImportListExclusion);
         Task<NewSeries> AddSeries(NewSeries seriesToAdd, string apiKey, string baseUrl);
         Task<IEnumerable<Episode>> GetEpisodes(int seriesId, string apiKey, string baseUrl);
+        Task<IEnumerable<Episodefile>> GetEpisodeFiles(int seriesId, string apiKey, string baseUrl);
+        Task<bool> DeleteEpisodeFile(int episodeFileId, string apiKey, string baseUrl);
         Task<Episode> GetEpisodeById(int episodeId, string apiKey, string baseUrl);
         Task<EpisodeUpdateResult> UpdateEpisode(Episode episodeToUpdate, string apiKey, string baseUrl);
         Task<bool> EpisodeSearch(int[] episodeIds, string apiKey, string baseUrl);

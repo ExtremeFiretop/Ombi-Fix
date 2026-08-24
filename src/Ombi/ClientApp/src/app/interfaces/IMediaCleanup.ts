@@ -92,7 +92,49 @@ export interface IMediaCleanupRequest {
     votingEndsAt?: Date;
     scheduledForDeletionAt?: Date;
     failureReason?: string;
+    entireSeries: boolean;
+    scopeLabel: string;
+    selectedEpisodeCount: number;
+    selectedSizeOnDisk: number;
+    selectedEpisodes: IMediaCleanupEpisodeSelection[];
+    selectedSeasons: number[];
     voters?: IMediaCleanupVoter[];
+}
+
+export interface IMediaCleanupSelection {
+    entireSeries: boolean;
+    episodes: IMediaCleanupEpisodeSelection[];
+}
+
+export interface IMediaCleanupEpisodeSelection {
+    seasonNumber: number;
+    episodeNumber: number;
+}
+
+export interface IMediaCleanupTvSelection {
+    result: boolean;
+    message?: string;
+    requestId: number;
+    title: string;
+    deleteFilesEnabled: boolean;
+    sizeOnDisk: number;
+    seasons: IMediaCleanupTvSeason[];
+}
+
+export interface IMediaCleanupTvSeason {
+    seasonNumber: number;
+    sizeOnDisk: number;
+    episodes: IMediaCleanupTvEpisode[];
+}
+
+export interface IMediaCleanupTvEpisode {
+    seasonNumber: number;
+    episodeNumber: number;
+    title: string;
+    airDateUtc?: Date;
+    hasFile: boolean;
+    episodeFileId: number;
+    sizeOnDisk: number;
 }
 
 export interface IMediaCleanupVoter {

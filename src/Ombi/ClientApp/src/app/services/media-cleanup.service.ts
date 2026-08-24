@@ -6,6 +6,8 @@ import { Observable } from "rxjs";
 import {
     IMediaCleanupActionResult,
     IMediaCleanupOverview,
+    IMediaCleanupSelection,
+    IMediaCleanupTvSelection,
     MediaCleanupVoteType,
     RequestType
 } from "../interfaces";
@@ -48,12 +50,28 @@ export class MediaCleanupService extends ServiceHelpers {
             { headers: this.headers });
     }
 
-    public requestOwnRemoval(requestType: RequestType, requestId: number): Observable<IMediaCleanupActionResult> {
-        return this.http.post<IMediaCleanupActionResult>(`${this.url}/own/${requestType}/${requestId}`, {}, { headers: this.headers });
+    public getTvSelection(requestId: number): Observable<IMediaCleanupTvSelection> {
+        return this.http.get<IMediaCleanupTvSelection>(`${this.url}/tv/${requestId}/episodes`, { headers: this.headers });
     }
 
-    public nominate(requestType: RequestType, requestId: number): Observable<IMediaCleanupActionResult> {
-        return this.http.post<IMediaCleanupActionResult>(`${this.url}/nominate/${requestType}/${requestId}`, {}, { headers: this.headers });
+    public requestOwnRemoval(
+        requestType: RequestType,
+        requestId: number,
+        selection?: IMediaCleanupSelection): Observable<IMediaCleanupActionResult> {
+        return this.http.post<IMediaCleanupActionResult>(
+            `${this.url}/own/${requestType}/${requestId}`,
+            selection ?? { entireSeries: true, episodes: [] },
+            { headers: this.headers });
+    }
+
+    public nominate(
+        requestType: RequestType,
+        requestId: number,
+        selection?: IMediaCleanupSelection): Observable<IMediaCleanupActionResult> {
+        return this.http.post<IMediaCleanupActionResult>(
+            `${this.url}/nominate/${requestType}/${requestId}`,
+            selection ?? { entireSeries: true, episodes: [] },
+            { headers: this.headers });
     }
 
     public vote(cleanupRequestId: string, vote: MediaCleanupVoteType): Observable<IMediaCleanupActionResult> {

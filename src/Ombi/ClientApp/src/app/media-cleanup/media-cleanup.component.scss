@@ -430,3 +430,26 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+.cleanup-scope {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    width: fit-content;
+    max-width: 100%;
+    margin: .5rem 0 0;
+    padding: .3rem .55rem;
+    border: 1px solid rgba(127, 127, 127, .4);
+    border-radius: 7px;
+    background: rgba(127, 127, 127, .1);
+    color: inherit;
+    font-size: .82rem;
+    line-height: 1.25;
+}
+
+.cleanup-scope mat-icon {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    font-size: 17px;
+}

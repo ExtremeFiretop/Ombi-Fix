@@ -1,0 +1,125 @@
+.tv-cleanup-dialog {
+    min-width: min(720px, 80vw);
+    max-width: 900px;
+}
+
+.series-heading,
+.selection-summary,
+.episode-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.series-heading {
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    font-size: 1.05rem;
+}
+
+.dialog-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2rem;
+}
+
+.dialog-error,
+.scope-explanation,
+.selection-summary,
+.selection-hint {
+    border: 1px solid rgba(128, 128, 128, 0.45);
+    border-radius: 8px;
+    padding: 0.75rem 0.9rem;
+    margin: 0.9rem 0;
+}
+
+.dialog-error,
+.scope-explanation.warning {
+    font-weight: 500;
+}
+
+.scope-toggle {
+    display: flex;
+    width: 100%;
+}
+
+.scope-toggle mat-button-toggle {
+    flex: 1 1 0;
+}
+
+.scope-toggle mat-icon {
+    margin-right: 0.35rem;
+}
+
+.scope-explanation {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.selection-summary {
+    justify-content: space-between;
+}
+
+.selection-hint {
+    opacity: 0.82;
+    font-size: 0.9rem;
+}
+
+.season-list {
+    display: block;
+    margin-top: 1rem;
+}
+
+.episode-row {
+    min-height: 42px;
+    padding: 0.25rem 0;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.episode-row:last-child {
+    border-bottom: 0;
+}
+
+.episode-row.no-file {
+    opacity: 0.55;
+}
+
+.episode-number {
+    width: 3rem;
+    flex: 0 0 3rem;
+    font-weight: 600;
+}
+
+.episode-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.episode-size {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    opacity: 0.8;
+}
+
+@media (max-width: 760px) {
+    .tv-cleanup-dialog {
+        min-width: 0;
+    }
+
+    .scope-toggle,
+    .selection-summary {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .episode-row {
+        gap: 0.4rem;
+    }
+
+    .episode-size {
+        font-size: 0.8rem;
+    }
+}

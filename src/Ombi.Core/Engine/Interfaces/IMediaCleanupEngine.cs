@@ -15,8 +15,9 @@ namespace Ombi.Core.Engine.Interfaces
             bool includeMetrics = true,
             bool includeLastPlayed = true,
             CancellationToken cancellationToken = default);
-        Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId);
-        Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId);
+        Task<MediaCleanupTvSelectionViewModel> GetTvSelection(int requestId);
+        Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId, MediaCleanupSelection selection = null);
+        Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId, MediaCleanupSelection selection = null);
         Task<MediaCleanupActionResult> Vote(string cleanupRequestId, MediaCleanupVoteType vote);
         Task<MediaCleanupActionResult> Approve(string cleanupRequestId);
         Task<MediaCleanupActionResult> Reject(string cleanupRequestId);

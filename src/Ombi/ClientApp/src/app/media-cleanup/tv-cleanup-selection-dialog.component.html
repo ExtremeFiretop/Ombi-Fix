@@ -1,0 +1,101 @@
+<h2 mat-dialog-title>Choose what to clean up</h2>
+
+<mat-dialog-content class="tv-cleanup-dialog">
+    <div class="series-heading">
+        <strong>{{ data.item.title }}</strong>
+        <span>{{ formatBytes(seriesSize || data.item.sizeOnDisk) }}</span>
+    </div>
+
+    <div *ngIf="loading" class="dialog-loading">
+        <mat-spinner diameter="40"></mat-spinner>
+        <span>Loading seasons and episodes from Sonarr…</span>
+    </div>
+
+    <div class="dialog-error" *ngIf="!loading && errorMessage">{{ errorMessage }}</div>
+
+    <ng-container *ngIf="!loading">
+        <mat-button-toggle-group [(value)]="mode" aria-label="TV cleanup scope" class="scope-toggle">
+            <mat-button-toggle value="entire">
+                <mat-icon>delete_sweep</mat-icon>
+                Entire series
+            </mat-button-toggle>
+            <mat-button-toggle value="episodes" [disabled]="!canChooseEpisodes">
+                <mat-icon>playlist_remove</mat-icon>
+                Choose seasons / episodes
+            </mat-button-toggle>
+        </mat-button-toggle-group>
+
+        <div class="scope-explanation" *ngIf="mode === 'entire'">
+            <strong>Entire series</strong>
+            <span>The current whole-series cleanup behavior will be used. Sonarr will remove the series and Ombi will clear its TV requests.</span>
+        </div>
+
+        <div class="scope-explanation warning" *ngIf="!deleteFilesEnabled">
+            Specific episode cleanup is unavailable because <strong>Delete Files</strong> is disabled in Media Cleanup settings.
+            Whole-series cleanup remains available.
+        </div>
+
+        <div class="scope-explanation warning" *ngIf="episodeLoadError">
+            <strong>Season / episode selection is unavailable.</strong>
+            <span>{{ episodeLoadError }}</span>
+            <span>You can still choose <strong>Entire series</strong>.</span>
+        </div>
+
+        <div class="scope-explanation warning" *ngIf="!episodeLoadError && deleteFilesEnabled && seasons.length && selectableEpisodeCount === 0">
+            Sonarr did not report any episode files for this series. Whole-series cleanup remains available.
+        </div>
+
+        <ng-container *ngIf="mode === 'episodes' && canChooseEpisodes">
+            <div class="selection-summary">
+                <span><strong>{{ selectedEpisodeCount }}</strong> of {{ selectableEpisodeCount }} file-backed episodes selected</span>
+                <span><strong>{{ formatBytes(selectedSizeOnDisk) }}</strong> selected</span>
+            </div>
+            <p class="selection-hint">
+                Selected episode files are deleted while the series itself stays in Sonarr. Selected episodes are unmonitored, and a fully selected season is unmonitored as a season. Episodes without a Sonarr file are shown but cannot be selected. Multi-episode files are selected together so one physical file is never partly removed.
+            </p>
+
+            <mat-accordion multi class="season-list">
+                <mat-expansion-panel *ngFor="let season of seasons">
+                    <mat-expansion-panel-header>
+                        <mat-panel-title>
+                            <mat-checkbox
+                                [checked]="isAllSeasonSelected(season)"
+                                [indeterminate]="isSomeSeasonSelected(season)"
+                                [disabled]="fileEpisodes(season).length === 0"
+                                (click)="$event.stopPropagation()"
+                                (change)="toggleSeason(season)">
+                                {{ seasonLabel(season.seasonNumber) }}
+                            </mat-checkbox>
+                        </mat-panel-title>
+                        <mat-panel-description>
+                            {{ fileEpisodes(season).length }} file-backed episode{{ fileEpisodes(season).length === 1 ? '' : 's' }} · {{ formatBytes(season.sizeOnDisk) }}
+                        </mat-panel-description>
+                    </mat-expansion-panel-header>
+
+                    <div class="episode-row" *ngFor="let episode of season.episodes" [class.no-file]="!episode.hasFile">
+                        <mat-checkbox
+                            [checked]="isEpisodeSelected(episode)"
+                            [disabled]="!episode.hasFile"
+                            (change)="toggleEpisode(episode)">
+                        </mat-checkbox>
+                        <span class="episode-number">E{{ episode.episodeNumber }}</span>
+                        <span class="episode-title">{{ episode.title || 'Untitled episode' }}</span>
+                        <span class="episode-size">{{ episode.hasFile ? formatBytes(episode.sizeOnDisk) : 'No file' }}</span>
+                    </div>
+                </mat-expansion-panel>
+            </mat-accordion>
+        </ng-container>
+    </ng-container>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+    <button mat-button type="button" (click)="dialogRef.close()">Cancel</button>
+    <button
+        mat-raised-button
+        color="warn"
+        type="button"
+        [disabled]="loading || (mode === 'episodes' && (!canChooseEpisodes || selectedEpisodeCount === 0))"
+        (click)="submit()">
+        {{ data.action === 'community' ? 'Start cleanup vote' : 'Continue' }}
+    </button>
+</mat-dialog-actions>

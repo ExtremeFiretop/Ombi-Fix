@@ -91,7 +91,22 @@ namespace Ombi.Settings.Settings.Models
         public DateTime? CompletedAt { get; set; }
         public string ApprovedByUserId { get; set; }
         public string FailureReason { get; set; }
+        /// <summary>
+        /// Empty means the cleanup targets the entire TV series. Populated entries make the
+        /// cleanup episode-scoped while keeping old serialized records backwards compatible.
+        /// </summary>
+        public List<MediaCleanupEpisodeRecord> SelectedEpisodes { get; set; } = new List<MediaCleanupEpisodeRecord>();
+        public List<int> SelectedSeasons { get; set; } = new List<int>();
         public List<MediaCleanupVoteRecord> Votes { get; set; } = new List<MediaCleanupVoteRecord>();
+    }
+
+    public class MediaCleanupEpisodeRecord
+    {
+        public int SeasonNumber { get; set; }
+        public int EpisodeNumber { get; set; }
+        public string Title { get; set; }
+        public int EpisodeFileId { get; set; }
+        public long SizeOnDisk { get; set; }
     }
 
     public class MediaCleanupVoteRecord

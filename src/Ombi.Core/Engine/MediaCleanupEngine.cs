@@ -22,6 +22,7 @@ using Ombi.Settings.Settings.Models;
 using Ombi.Settings.Settings.Models.External;
 using Ombi.Settings.Settings.Models.Notifications;
 using Ombi.Store.Entities;
+using Ombi.Store.Entities.Requests;
 using Ombi.Store.Repository;
 using Ombi.Store.Repository.Requests;
 
@@ -297,7 +298,117 @@ namespace Ombi.Core.Engine
             return result;
         }
 
-        public async Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId)
+        public async Task<MediaCleanupTvSelectionViewModel> GetTvSelection(int requestId)
+        {
+            var settings = await _settings.GetSettingsAsync();
+            var user = await _currentUser.GetUser();
+            if (user == null)
+            {
+                return new MediaCleanupTvSelectionViewModel { Result = false, Message = "User could not be resolved." };
+            }
+
+            var permissions = await GetPermissions(user);
+            if (!permissions.CanRequestRemoval && !permissions.CanVote && !permissions.CanManage)
+            {
+                return new MediaCleanupTvSelectionViewModel { Result = false, Message = "You do not have permission to use Media Cleanup." };
+            }
+
+            var tv = await _tvRequests.Get().FirstOrDefaultAsync(x => x.Id == requestId);
+            if (tv == null || tv.ChildRequests == null || !tv.ChildRequests.Any() || !tv.ChildRequests.All(x => x.Available))
+            {
+                return new MediaCleanupTvSelectionViewModel { Result = false, Message = "The available Ombi TV request could not be found." };
+            }
+
+            var sonarrSettings = await _sonarrSettings.GetSettingsAsync();
+            if (!sonarrSettings.Enabled)
+            {
+                return new MediaCleanupTvSelectionViewModel
+                {
+                    Result = false,
+                    RequestId = requestId,
+                    Title = tv.Title,
+                    DeleteFilesEnabled = settings.DeleteFiles,
+                    Message = "Sonarr is not enabled, so episode-level cleanup is unavailable."
+                };
+            }
+
+            try
+            {
+                var series = (await _sonarr.GetSeries(sonarrSettings.ApiKey, sonarrSettings.FullUri))
+                    .FirstOrDefault(x => x.tvdbId == tv.TvDbId);
+                if (series == null)
+                {
+                    return new MediaCleanupTvSelectionViewModel
+                    {
+                        Result = false,
+                        RequestId = requestId,
+                        Title = tv.Title,
+                        DeleteFilesEnabled = settings.DeleteFiles,
+                        Message = "This series could not be found in Sonarr."
+                    };
+                }
+
+                var episodes = (await _sonarr.GetEpisodes(series.id, sonarrSettings.ApiKey, sonarrSettings.FullUri)).ToList();
+                var episodeFiles = (await _sonarr.GetEpisodeFiles(series.id, sonarrSettings.ApiKey, sonarrSettings.FullUri)).ToList();
+                var fileById = episodeFiles.GroupBy(x => x.id).ToDictionary(x => x.Key, x => x.First());
+
+                var result = new MediaCleanupTvSelectionViewModel
+                {
+                    Result = true,
+                    RequestId = requestId,
+                    Title = tv.Title,
+                    DeleteFilesEnabled = settings.DeleteFiles,
+                    SizeOnDisk = episodeFiles.GroupBy(x => x.id).Sum(x => x.First().size)
+                };
+
+                result.Seasons = episodes
+                    .Where(x => x.seasonNumber >= 0)
+                    .GroupBy(x => x.seasonNumber)
+                    .OrderBy(x => x.Key)
+                    .Select(season =>
+                    {
+                        var seasonEpisodes = season.OrderBy(x => x.episodeNumber).ToList();
+                        var seasonFileIds = seasonEpisodes
+                            .Where(x => x.hasFile && x.episodeFileId > 0)
+                            .Select(x => x.episodeFileId)
+                            .Distinct()
+                            .ToList();
+
+                        return new MediaCleanupTvSeasonViewModel
+                        {
+                            SeasonNumber = season.Key,
+                            SizeOnDisk = seasonFileIds.Sum(fileId => fileById.TryGetValue(fileId, out var file) ? file.size : 0),
+                            Episodes = seasonEpisodes.Select(episode => new MediaCleanupTvEpisodeViewModel
+                            {
+                                SeasonNumber = episode.seasonNumber,
+                                EpisodeNumber = episode.episodeNumber,
+                                Title = episode.title,
+                                AirDateUtc = episode.airDateUtc == default ? (DateTime?)null : episode.airDateUtc,
+                                HasFile = episode.hasFile && episode.episodeFileId > 0,
+                                EpisodeFileId = episode.episodeFileId,
+                                SizeOnDisk = episode.episodeFileId > 0 && fileById.TryGetValue(episode.episodeFileId, out var file) ? file.size : 0
+                            }).ToList()
+                        };
+                    })
+                    .ToList();
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load Sonarr episodes for Media Cleanup request {RequestId}", requestId);
+                return new MediaCleanupTvSelectionViewModel
+                {
+                    Result = false,
+                    RequestId = requestId,
+                    Title = tv.Title,
+                    DeleteFilesEnabled = settings.DeleteFiles,
+                    Message = "Ombi could not load this series' episodes from Sonarr."
+                };
+            }
+        }
+
+        public async Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId, MediaCleanupSelection selection = null)
         {
             await StateLock.WaitAsync();
             try
@@ -338,6 +449,16 @@ namespace Ombi.Core.Engine
                         : "You can only remove media that you requested.");
                 }
 
+                var tvSelection = await ResolveTvCleanupSelection(target, selection);
+                if (!string.IsNullOrEmpty(tvSelection.Error))
+                {
+                    return Fail(tvSelection.Error);
+                }
+                if (tvSelection.Episodes.Count > 0 && !settings.DeleteFiles)
+                {
+                    return Fail("Specific TV episode cleanup requires Delete Files to be enabled in Media Cleanup settings. You can still remove the entire series.");
+                }
+
                 var state = await LoadState();
                 if (FindActive(state, requestType, requestId) != null)
                 {
@@ -345,6 +466,7 @@ namespace Ombi.Core.Engine
                 }
 
                 var record = CreateRecord(target, user.Id, MediaCleanupOrigin.OwnRequest);
+                ApplyTvSelection(record, tvSelection);
                 if (settings.OwnRequestRemoval == OwnRequestRemovalMode.RequestRemoval)
                 {
                     record.Status = MediaCleanupStatus.PendingAdminApproval;
@@ -373,7 +495,7 @@ namespace Ombi.Core.Engine
             }
         }
 
-        public async Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId)
+        public async Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId, MediaCleanupSelection selection = null)
         {
             await StateLock.WaitAsync();
             try
@@ -407,6 +529,16 @@ namespace Ombi.Core.Engine
                     return Fail($"This title must be available for at least {settings.MinimumMediaAgeDays} days before community cleanup can be started.");
                 }
 
+                var tvSelection = await ResolveTvCleanupSelection(target, selection);
+                if (!string.IsNullOrEmpty(tvSelection.Error))
+                {
+                    return Fail(tvSelection.Error);
+                }
+                if (tvSelection.Episodes.Count > 0 && !settings.DeleteFiles)
+                {
+                    return Fail("Specific TV episode cleanup requires Delete Files to be enabled in Media Cleanup settings. You can still nominate the entire series.");
+                }
+
                 var state = await LoadState();
                 var existing = FindActive(state, requestType, requestId);
                 if (existing != null)
@@ -415,6 +547,7 @@ namespace Ombi.Core.Engine
                 }
 
                 var record = CreateRecord(target, user.Id, MediaCleanupOrigin.Community);
+                ApplyTvSelection(record, tvSelection);
                 record.Status = MediaCleanupStatus.Voting;
                 record.VotingEndsAt = DateTime.UtcNow.AddDays(Math.Max(1, settings.VotingPeriodDays));
                 record.Votes.Add(new MediaCleanupVoteRecord
@@ -683,6 +816,8 @@ namespace Ombi.Core.Engine
             var title = record.Title;
             var requestedByUserId = record.RequestedByUserId;
             var origin = record.Origin;
+            var requestType = record.RequestType;
+            var scopeLabel = BuildCleanupScopeLabel(record);
 
             _ = Task.Run(async () =>
             {
@@ -710,6 +845,13 @@ namespace Ombi.Core.Engine
                     var requesterName = requester?.UserAlias ?? "An Ombi user";
                     var encodedTitle = System.Net.WebUtility.HtmlEncode(title ?? "Media");
                     var encodedRequester = System.Net.WebUtility.HtmlEncode(requesterName);
+                    var encodedScope = System.Net.WebUtility.HtmlEncode(scopeLabel ?? string.Empty);
+                    var scopeHtml = requestType == RequestType.TvShow
+                        ? $"<p>Cleanup scope: <strong>{encodedScope}</strong></p>"
+                        : string.Empty;
+                    var scopePlain = requestType == RequestType.TvShow
+                        ? $" Cleanup scope: {scopeLabel}."
+                        : string.Empty;
                     var source = origin == MediaCleanupOrigin.OwnRequest
                         ? $"{encodedRequester} requested removal of this title."
                         : "A community cleanup vote reached the configured threshold and now requires approval.";
@@ -726,10 +868,10 @@ namespace Ombi.Core.Engine
                         {
                             To = recipient.Email,
                             Subject = $"Media cleanup approval required: {title}",
-                            Message = $"<p><strong>{encodedTitle}</strong> is waiting for Media Cleanup approval.</p><p>{source}</p><p>Open Ombi and go to <strong>Media Cleanup</strong> to approve or reject it.</p>",
+                            Message = $"<p><strong>{encodedTitle}</strong> is waiting for Media Cleanup approval.</p>{scopeHtml}<p>{source}</p><p>Open Ombi and go to <strong>Media Cleanup</strong> to approve or reject it.</p>",
                             Other =
                             {
-                                ["PlainTextBody"] = $"{title} is waiting for Media Cleanup approval. {plainSource} Open Ombi and go to Media Cleanup to approve or reject it."
+                                ["PlainTextBody"] = $"{title} is waiting for Media Cleanup approval.{scopePlain} {plainSource} Open Ombi and go to Media Cleanup to approve or reject it."
                             }
                         }, emailSettings);
                     }
@@ -770,11 +912,15 @@ namespace Ombi.Core.Engine
                         await _movieRequests.DeleteRange(movieRequests);
                     }
                 }
+                else if (IsPartialTvCleanup(record))
+                {
+                    await RemoveSelectedTvRequests(record);
+                }
                 else
                 {
-                    // Same rule for TV: once the actual series is removed, all Ombi request
-                    // parents for that provider identity must be removed or ExistingRule can still
-                    // report the series as requested.
+                    // Whole-series cleanup keeps the existing behavior: remove every Ombi request
+                    // parent for the provider identity so ExistingRule cannot leave the title stuck
+                    // as Requested after Sonarr removes the series.
                     var tvRequests = await _tvRequests.Get()
                         .Where(x => x.Id == record.MediaRequestId ||
                                     (record.TheMovieDbId > 0 && x.ExternalProviderId == record.TheMovieDbId) ||
@@ -807,6 +953,71 @@ namespace Ombi.Core.Engine
             }
         }
 
+        private async Task RemoveSelectedTvRequests(MediaCleanupRecord record)
+        {
+            var selected = record.SelectedEpisodes
+                .Select(x => (x.SeasonNumber, x.EpisodeNumber))
+                .ToHashSet();
+            var selectedSeasons = (record.SelectedSeasons ?? new List<int>()).ToHashSet();
+            if (selected.Count == 0 && selectedSeasons.Count == 0)
+            {
+                return;
+            }
+
+            var tvRequests = await _tvRequests.Get()
+                .Where(x => x.Id == record.MediaRequestId ||
+                            (record.TheMovieDbId > 0 && x.ExternalProviderId == record.TheMovieDbId) ||
+                            (record.TvDbId > 0 && x.TvDbId == record.TvDbId))
+                .ToListAsync();
+
+            var removedEpisodes = 0;
+            foreach (var tv in tvRequests)
+            {
+                foreach (var child in (tv.ChildRequests ?? new List<ChildRequests>()).ToList())
+                {
+                    foreach (var season in (child.SeasonRequests ?? new List<SeasonRequests>()).ToList())
+                    {
+                        var episodes = (season.Episodes ?? new List<EpisodeRequests>())
+                            .Where(x => selectedSeasons.Contains(season.SeasonNumber) ||
+                                        selected.Contains((season.SeasonNumber, x.EpisodeNumber)))
+                            .ToList();
+                        if (episodes.Count > 0)
+                        {
+                            _tvRequests.Db.EpisodeRequests.RemoveRange(episodes);
+                            foreach (var episode in episodes)
+                            {
+                                season.Episodes.Remove(episode);
+                            }
+                            removedEpisodes += episodes.Count;
+                        }
+
+                        if (season.Episodes == null || season.Episodes.Count == 0)
+                        {
+                            _tvRequests.Db.Set<SeasonRequests>().Remove(season);
+                            child.SeasonRequests?.Remove(season);
+                        }
+                    }
+
+                    if (child.SeasonRequests == null || child.SeasonRequests.Count == 0)
+                    {
+                        _tvRequests.Db.ChildRequests.Remove(child);
+                        tv.ChildRequests?.Remove(child);
+                    }
+                }
+
+                if (tv.ChildRequests == null || tv.ChildRequests.Count == 0)
+                {
+                    _tvRequests.Db.TvRequests.Remove(tv);
+                }
+            }
+
+            await _tvRequests.Save();
+            _logger.LogInformation(
+                "Removed {EpisodeCount} Ombi TV episode request row(s) for partial cleanup of '{Title}'",
+                removedEpisodes,
+                record.Title);
+        }
+
         private async Task RemoveArrSearchCache(MediaCleanupRecord record)
         {
             try
@@ -830,34 +1041,56 @@ namespace Ombi.Core.Engine
 
                 if (record.RequestType == RequestType.TvShow)
                 {
+                    var episodeQuery = _sonarrEpisodeCache.GetAll()
+                        .Where(x =>
+                            (record.TvDbId > 0 && x.TvDbId == record.TvDbId) ||
+                            (record.TheMovieDbId > 0 && x.MovieDbId == record.TheMovieDbId));
+
+                    if (IsPartialTvCleanup(record))
+                    {
+                        var selected = record.SelectedEpisodes
+                            .Select(x => (x.SeasonNumber, x.EpisodeNumber))
+                            .ToHashSet();
+                        var selectedSeasons = (record.SelectedSeasons ?? new List<int>()).ToHashSet();
+                        var episodeMatches = await episodeQuery.ToListAsync();
+                        episodeMatches = episodeMatches
+                            .Where(x => selectedSeasons.Contains(x.SeasonNumber) ||
+                                        selected.Contains((x.SeasonNumber, x.EpisodeNumber)))
+                            .ToList();
+                        if (episodeMatches.Count > 0)
+                        {
+                            await _sonarrEpisodeCache.DeleteRange(episodeMatches);
+                            _logger.LogInformation(
+                                "Removed {EpisodeCount} stale Sonarr episode cache row(s) for partial cleanup of '{Title}'",
+                                episodeMatches.Count,
+                                record.Title);
+                        }
+                        return;
+                    }
+
                     var seriesMatches = await _sonarrCache.GetAll()
                         .Where(x =>
                             (record.TvDbId > 0 && x.TvDbId == record.TvDbId) ||
                             (record.TheMovieDbId > 0 && x.TheMovieDbId == record.TheMovieDbId))
                         .ToListAsync();
+                    var allEpisodeMatches = await episodeQuery.ToListAsync();
 
-                    var episodeMatches = await _sonarrEpisodeCache.GetAll()
-                        .Where(x =>
-                            (record.TvDbId > 0 && x.TvDbId == record.TvDbId) ||
-                            (record.TheMovieDbId > 0 && x.MovieDbId == record.TheMovieDbId))
-                        .ToListAsync();
-
-                    if (episodeMatches.Count > 0)
+                    if (allEpisodeMatches.Count > 0)
                     {
-                        await _sonarrEpisodeCache.DeleteRange(episodeMatches);
+                        await _sonarrEpisodeCache.DeleteRange(allEpisodeMatches);
                     }
                     if (seriesMatches.Count > 0)
                     {
                         await _sonarrCache.DeleteRange(seriesMatches);
                     }
 
-                    if (seriesMatches.Count > 0 || episodeMatches.Count > 0)
+                    if (seriesMatches.Count > 0 || allEpisodeMatches.Count > 0)
                     {
                         _logger.LogInformation(
                             "Removed stale Sonarr cache for '{Title}': {SeriesCount} series row(s), {EpisodeCount} episode row(s)",
                             record.Title,
                             seriesMatches.Count,
-                            episodeMatches.Count);
+                            allEpisodeMatches.Count);
                     }
                 }
             }
@@ -919,12 +1152,38 @@ namespace Ombi.Core.Engine
                         continue;
                     }
 
-                    await _plexContent.DeleteContent(content);
-                    _logger.LogInformation(
-                        "Removed stale Plex availability cache for {RequestType} '{Title}' (Plex content {PlexContentId})",
-                        record.RequestType,
-                        record.Title,
-                        id);
+                    if (IsPartialTvCleanup(record))
+                    {
+                        var selected = record.SelectedEpisodes
+                            .Select(x => (x.SeasonNumber, x.EpisodeNumber))
+                            .ToHashSet();
+                        var selectedSeasons = (record.SelectedSeasons ?? new List<int>()).ToHashSet();
+                        var episodes = content.Episodes?.OfType<PlexEpisode>()
+                            .Where(x => selectedSeasons.Contains(x.SeasonNumber) ||
+                                        selected.Contains((x.SeasonNumber, x.EpisodeNumber)))
+                            .ToList() ?? new List<PlexEpisode>();
+                        foreach (var episode in episodes)
+                        {
+                            await _plexContent.DeleteEpisode(episode);
+                        }
+
+                        if (episodes.Count > 0)
+                        {
+                            _logger.LogInformation(
+                                "Removed {EpisodeCount} stale Plex episode cache row(s) for partial cleanup of '{Title}'",
+                                episodes.Count,
+                                record.Title);
+                        }
+                    }
+                    else
+                    {
+                        await _plexContent.DeleteContent(content);
+                        _logger.LogInformation(
+                            "Removed stale Plex availability cache for {RequestType} '{Title}' (Plex content {PlexContentId})",
+                            record.RequestType,
+                            record.Title,
+                            id);
+                    }
                 }
             }
             catch (Exception ex)
@@ -992,7 +1251,105 @@ namespace Ombi.Core.Engine
                 return false;
             }
 
+            if (IsPartialTvCleanup(record))
+            {
+                if (!cleanupSettings.DeleteFiles)
+                {
+                    throw new InvalidOperationException(
+                        "Specific TV episode cleanup requires Delete Files to remain enabled until the cleanup is completed.");
+                }
+
+                return await DeleteTvEpisodes(record, match, sonarrSettings);
+            }
+
             await _sonarr.DeleteSeries(match.id, sonarrSettings.ApiKey, sonarrSettings.FullUri, cleanupSettings.DeleteFiles, cleanupSettings.AddImportExclusion);
+            return true;
+        }
+
+        private async Task<bool> DeleteTvEpisodes(MediaCleanupRecord record, Ombi.Api.External.ExternalApis.Sonarr.Models.SonarrSeries series, SonarrSettings sonarrSettings)
+        {
+            var selectedKeys = record.SelectedEpisodes
+                .Select(x => (x.SeasonNumber, x.EpisodeNumber))
+                .ToHashSet();
+            var selectedSeasons = (record.SelectedSeasons ?? new List<int>()).ToHashSet();
+            var episodes = (await _sonarr.GetEpisodes(series.id, sonarrSettings.ApiKey, sonarrSettings.FullUri)).ToList();
+            var selectedEpisodes = episodes
+                .Where(x => selectedSeasons.Contains(x.seasonNumber) ||
+                            selectedKeys.Contains((x.seasonNumber, x.episodeNumber)))
+                .ToList();
+
+            if (selectedEpisodes.Count == 0)
+            {
+                return false;
+            }
+
+            // A Sonarr episode file can cover multiple episode records (for example S01E01-E02).
+            // The selection is expanded when it is created, but re-check here because the file
+            // layout could have changed during an approval/voting/grace period. Never delete a
+            // physical file if it now contains an episode that was outside the approved scope.
+            var selectedFileIds = selectedEpisodes
+                .Where(x => x.hasFile && x.episodeFileId > 0)
+                .Select(x => x.episodeFileId)
+                .Distinct()
+                .ToHashSet();
+            var collateralEpisodes = episodes
+                .Where(x => x.hasFile &&
+                            x.episodeFileId > 0 &&
+                            selectedFileIds.Contains(x.episodeFileId) &&
+                            !selectedSeasons.Contains(x.seasonNumber) &&
+                            !selectedKeys.Contains((x.seasonNumber, x.episodeNumber)))
+                .OrderBy(x => x.seasonNumber)
+                .ThenBy(x => x.episodeNumber)
+                .ToList();
+            if (collateralEpisodes.Count > 0)
+            {
+                var examples = string.Join(", ", collateralEpisodes
+                    .Take(5)
+                    .Select(x => $"S{x.seasonNumber:00}E{x.episodeNumber:00}"));
+                throw new InvalidOperationException(
+                    $"Sonarr's episode-file layout changed after this cleanup was created. " +
+                    $"Deleting the approved files would also remove unselected episode(s): {examples}. " +
+                    "Cancel this cleanup and create a new selection.");
+            }
+
+            // Unmonitor first so Sonarr does not immediately search for/re-download a file that
+            // Media Cleanup just removed. The bulk monitor endpoint is already used elsewhere in Ombi.
+            var episodeIds = selectedEpisodes.Select(x => x.id).Where(x => x > 0).Distinct().ToArray();
+            if (episodeIds.Length > 0)
+            {
+                await _sonarr.MonitorEpisode(episodeIds, false, sonarrSettings.ApiKey, sonarrSettings.FullUri);
+            }
+
+            // When every file-bearing episode in a season was selected, also unmonitor the season.
+            // This prevents future/new episodes in a deliberately-cleaned season from being picked up.
+            if (record.SelectedSeasons?.Count > 0 && series.seasons != null)
+            {
+                var changed = false;
+                foreach (var season in series.seasons.Where(x => record.SelectedSeasons.Contains(x.seasonNumber)))
+                {
+                    if (season.monitored)
+                    {
+                        season.monitored = false;
+                        changed = true;
+                    }
+                }
+                if (changed)
+                {
+                    await _sonarr.UpdateSeries(series, sonarrSettings.ApiKey, sonarrSettings.FullUri);
+                }
+            }
+
+            var fileIds = selectedFileIds.ToList();
+            foreach (var fileId in fileIds)
+            {
+                await _sonarr.DeleteEpisodeFile(fileId, sonarrSettings.ApiKey, sonarrSettings.FullUri);
+            }
+
+            _logger.LogInformation(
+                "Media cleanup removed {FileCount} Sonarr episode file(s) covering {EpisodeCount} episode(s) from '{Title}'",
+                fileIds.Count,
+                selectedEpisodes.Count,
+                record.Title);
             return true;
         }
 
@@ -1194,6 +1551,108 @@ namespace Ombi.Core.Engine
             return null;
         }
 
+        private async Task<ResolvedTvCleanupSelection> ResolveTvCleanupSelection(CleanupTarget target, MediaCleanupSelection selection)
+        {
+            var result = new ResolvedTvCleanupSelection();
+            if (target.RequestType != RequestType.TvShow || selection == null || selection.EntireSeries)
+            {
+                return result;
+            }
+
+            var requested = selection.Episodes ?? new List<MediaCleanupEpisodeSelection>();
+            var requestedKeys = requested
+                .Select(x => (x.SeasonNumber, x.EpisodeNumber))
+                .Distinct()
+                .ToHashSet();
+            if (requestedKeys.Count == 0)
+            {
+                result.Error = "Select at least one TV episode, or choose Entire series.";
+                return result;
+            }
+
+            var sonarrSettings = await _sonarrSettings.GetSettingsAsync();
+            if (!sonarrSettings.Enabled)
+            {
+                result.Error = "Sonarr is not enabled, so episode-level cleanup is unavailable.";
+                return result;
+            }
+
+            try
+            {
+                var series = (await _sonarr.GetSeries(sonarrSettings.ApiKey, sonarrSettings.FullUri))
+                    .FirstOrDefault(x => x.tvdbId == target.TvDbId);
+                if (series == null)
+                {
+                    result.Error = "This series could not be found in Sonarr.";
+                    return result;
+                }
+
+                var episodes = (await _sonarr.GetEpisodes(series.id, sonarrSettings.ApiKey, sonarrSettings.FullUri)).ToList();
+                var episodeFiles = (await _sonarr.GetEpisodeFiles(series.id, sonarrSettings.ApiKey, sonarrSettings.FullUri)).ToList();
+                var fileById = episodeFiles.GroupBy(x => x.id).ToDictionary(x => x.Key, x => x.First());
+
+                var directlySelected = episodes
+                    .Where(x => x.hasFile && x.episodeFileId > 0 && requestedKeys.Contains((x.seasonNumber, x.episodeNumber)))
+                    .ToList();
+                if (directlySelected.Count == 0)
+                {
+                    result.Error = "None of the selected episodes currently have a file in Sonarr.";
+                    return result;
+                }
+
+                // Sonarr can represent more than one episode with one physical file (E01-E02).
+                // Expand the requested keys by file id so the cleanup scope exactly matches what
+                // deleting that file will remove.
+                var selectedFileIds = directlySelected.Select(x => x.episodeFileId).Distinct().ToHashSet();
+                var expanded = episodes
+                    .Where(x => x.hasFile && x.episodeFileId > 0 && selectedFileIds.Contains(x.episodeFileId))
+                    .GroupBy(x => (x.seasonNumber, x.episodeNumber))
+                    .Select(x => x.First())
+                    .OrderBy(x => x.seasonNumber)
+                    .ThenBy(x => x.episodeNumber)
+                    .ToList();
+
+                result.Episodes = expanded.Select(x => new MediaCleanupEpisodeRecord
+                {
+                    SeasonNumber = x.seasonNumber,
+                    EpisodeNumber = x.episodeNumber,
+                    Title = x.title,
+                    EpisodeFileId = x.episodeFileId,
+                    SizeOnDisk = fileById.TryGetValue(x.episodeFileId, out var file) ? file.size : 0
+                }).ToList();
+
+                result.SelectedSeasons = episodes
+                    .Where(x => x.hasFile && x.episodeFileId > 0)
+                    .GroupBy(x => x.seasonNumber)
+                    .Where(season => season.Select(x => x.episodeFileId).Distinct().All(selectedFileIds.Contains))
+                    .Select(x => x.Key)
+                    .OrderBy(x => x)
+                    .ToList();
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not validate the selected Sonarr episodes for '{Title}'", target.Title);
+                result.Error = "Ombi could not validate the selected episodes with Sonarr.";
+                return result;
+            }
+        }
+
+        private static void ApplyTvSelection(MediaCleanupRecord record, ResolvedTvCleanupSelection selection)
+        {
+            if (record.RequestType != RequestType.TvShow || selection == null || selection.Episodes.Count == 0)
+            {
+                return;
+            }
+
+            record.SelectedEpisodes = selection.Episodes;
+            record.SelectedSeasons = selection.SelectedSeasons;
+            record.SizeOnDisk = selection.Episodes
+                .GroupBy(x => x.EpisodeFileId)
+                .Sum(x => x.First().SizeOnDisk);
+        }
+
         private MediaCleanupRecord CreateRecord(CleanupTarget target, string userId, MediaCleanupOrigin origin)
         {
             return new MediaCleanupRecord
@@ -1306,6 +1765,18 @@ namespace Ombi.Core.Engine
                 VotingEndsAt = record.VotingEndsAt,
                 ScheduledForDeletionAt = record.ScheduledForDeletionAt,
                 FailureReason = record.FailureReason,
+                EntireSeries = !IsPartialTvCleanup(record),
+                ScopeLabel = BuildCleanupScopeLabel(record),
+                SelectedEpisodeCount = record.SelectedEpisodes?.Count ?? 0,
+                SelectedSizeOnDisk = IsPartialTvCleanup(record) ? record.SizeOnDisk : 0,
+                SelectedEpisodes = record.SelectedEpisodes?
+                    .Select(x => new MediaCleanupEpisodeSelection
+                    {
+                        SeasonNumber = x.SeasonNumber,
+                        EpisodeNumber = x.EpisodeNumber
+                    })
+                    .ToList() ?? new List<MediaCleanupEpisodeSelection>(),
+                SelectedSeasons = record.SelectedSeasons?.ToList() ?? new List<int>(),
                 Voters = voterDisplayNames == null
                     ? new List<MediaCleanupVoterViewModel>()
                     : record.Votes
@@ -1323,6 +1794,67 @@ namespace Ombi.Core.Engine
             };
         }
 
+        private static string BuildCleanupScopeLabel(MediaCleanupRecord record)
+        {
+            if (record.RequestType == RequestType.Movie)
+            {
+                return "Entire movie";
+            }
+            if (!IsPartialTvCleanup(record))
+            {
+                return "Entire series";
+            }
+
+            var selectedEpisodes = record.SelectedEpisodes ?? new List<MediaCleanupEpisodeRecord>();
+            var seasons = selectedEpisodes
+                .Select(x => x.SeasonNumber)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+            var fullSeasons = (record.SelectedSeasons ?? new List<int>())
+                .Where(seasons.Contains)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+            var partialEpisodes = selectedEpisodes
+                .Where(x => !fullSeasons.Contains(x.SeasonNumber))
+                .ToList();
+
+            string SeasonLabel(int seasonNumber) => seasonNumber == 0 ? "Specials" : $"Season {seasonNumber}";
+
+            if (partialEpisodes.Count == 0 && fullSeasons.Count > 0)
+            {
+                if (fullSeasons.Count == 1)
+                {
+                    return SeasonLabel(fullSeasons[0]);
+                }
+
+                if (fullSeasons.Contains(0))
+                {
+                    var numbered = fullSeasons.Where(x => x != 0).Select(x => x.ToString());
+                    return $"Specials + Seasons {string.Join(", ", numbered)}";
+                }
+
+                return $"Seasons {string.Join(", ", fullSeasons)}";
+            }
+
+            var partialSeasonCount = partialEpisodes.Select(x => x.SeasonNumber).Distinct().Count();
+            var partialLabel = partialSeasonCount == 1
+                ? $"{partialEpisodes.Count} episode{(partialEpisodes.Count == 1 ? string.Empty : "s")} from {SeasonLabel(partialEpisodes[0].SeasonNumber)}"
+                : $"{partialEpisodes.Count} episode{(partialEpisodes.Count == 1 ? string.Empty : "s")} across {partialSeasonCount} seasons";
+
+            if (fullSeasons.Count == 1)
+            {
+                return $"{SeasonLabel(fullSeasons[0])} + {partialLabel}";
+            }
+            if (fullSeasons.Count > 1)
+            {
+                return $"{fullSeasons.Count} full seasons + {partialLabel}";
+            }
+
+            return partialLabel;
+        }
+
         private async Task<MediaCleanupState> LoadState()
         {
             _state.ClearCache();
@@ -1331,6 +1863,8 @@ namespace Ombi.Core.Engine
             foreach (var request in state.Requests)
             {
                 request.OwnerUserIds ??= new List<string>();
+                request.SelectedEpisodes ??= new List<MediaCleanupEpisodeRecord>();
+                request.SelectedSeasons ??= new List<int>();
                 request.Votes ??= new List<MediaCleanupVoteRecord>();
             }
             return state;
@@ -1417,6 +1951,11 @@ namespace Ombi.Core.Engine
             return availableSince.HasValue && availableSince.Value <= now.AddDays(-minimumDays);
         }
 
+        private static bool IsPartialTvCleanup(MediaCleanupRecord record)
+        {
+            return record?.RequestType == RequestType.TvShow && record.SelectedEpisodes?.Count > 0;
+        }
+
         private static bool IsActive(MediaCleanupRecord record)
         {
             return record.Status == MediaCleanupStatus.Voting ||
@@ -1493,6 +2032,13 @@ namespace Ombi.Core.Engine
                     .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(x => x.Key, x => x.First().Key, StringComparer.OrdinalIgnoreCase);
             }
+        }
+
+        private sealed class ResolvedTvCleanupSelection
+        {
+            public string Error { get; set; }
+            public List<MediaCleanupEpisodeRecord> Episodes { get; set; } = new List<MediaCleanupEpisodeRecord>();
+            public List<int> SelectedSeasons { get; set; } = new List<int>();
         }
 
         private class CleanupTarget

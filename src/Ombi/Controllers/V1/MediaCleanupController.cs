@@ -32,16 +32,22 @@ namespace Ombi.Controllers.V1
             return _engine.GetOverview(requestType, requestId, mediaId, includeMetrics, includeLastPlayed, HttpContext.RequestAborted);
         }
 
-        [HttpPost("own/{requestType}/{requestId:int}")]
-        public Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId)
+        [HttpGet("tv/{requestId:int}/episodes")]
+        public Task<MediaCleanupTvSelectionViewModel> GetTvSelection(int requestId)
         {
-            return _engine.RequestOwnRemoval(requestType, requestId);
+            return _engine.GetTvSelection(requestId);
+        }
+
+        [HttpPost("own/{requestType}/{requestId:int}")]
+        public Task<MediaCleanupActionResult> RequestOwnRemoval(RequestType requestType, int requestId, [FromBody] MediaCleanupSelection selection = null)
+        {
+            return _engine.RequestOwnRemoval(requestType, requestId, selection);
         }
 
         [HttpPost("nominate/{requestType}/{requestId:int}")]
-        public Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId)
+        public Task<MediaCleanupActionResult> Nominate(RequestType requestType, int requestId, [FromBody] MediaCleanupSelection selection = null)
         {
-            return _engine.Nominate(requestType, requestId);
+            return _engine.Nominate(requestType, requestId, selection);
         }
 
         [HttpPost("vote/{cleanupRequestId}/{vote}")]

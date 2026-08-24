@@ -138,6 +138,25 @@ namespace Ombi.Api.External.ExternalApis.Sonarr
         }
 
         /// <summary>
+        /// Returns all episode files for a series. Used by Media Cleanup to show accurate
+        /// per-episode/season sizes and to delete only the files the user selected.
+        /// </summary>
+        public async Task<IEnumerable<Episodefile>> GetEpisodeFiles(int seriesId, string apiKey, string baseUrl)
+        {
+            var request = new Request($"{ApiBaseUrl}episodefile?seriesId={seriesId}", baseUrl, HttpMethod.Get);
+            request.AddHeader("X-Api-Key", apiKey);
+            return await Api.Request<List<Episodefile>>(request);
+        }
+
+        public async Task<bool> DeleteEpisodeFile(int episodeFileId, string apiKey, string baseUrl)
+        {
+            var request = new Request($"{ApiBaseUrl}episodefile/{episodeFileId}", baseUrl, HttpMethod.Delete);
+            request.AddHeader("X-Api-Key", apiKey);
+            await Api.RequestContent(request);
+            return true;
+        }
+
+        /// <summary>
         /// Returns the episode for the series
         /// </summary>
         /// <param name="episodeId">The Sonarr Episode ID</param>
