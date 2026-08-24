@@ -275,7 +275,7 @@
 }
 
 .vote-card-voted {
-    border-top: 3px solid var(--mdc-theme-primary, #3f51b5);
+    border-top: 3px solid rgba(127, 127, 127, .45);
 }
 
 .vote-needed-label,
@@ -283,9 +283,9 @@
     font-weight: 700;
 }
 
-.vote-cast-label,
-.vote-cast-count {
-    color: var(--mdc-theme-primary, #3f51b5);
+.vote-recorded-label,
+.vote-recorded-count {
+    font-weight: 600;
 }
 
 .vote-needed-message {
@@ -294,20 +294,22 @@
     font-weight: 700;
 }
 
-.vote-cast-status {
+.vote-recorded-status {
     display: flex;
     align-items: center;
     gap: .4rem;
     margin-top: .75rem;
     padding: .4rem .65rem;
-    border: 1px solid var(--mdc-theme-primary, #3f51b5);
+    border: 1px solid rgba(127, 127, 127, .45);
     border-radius: 999px;
-    color: var(--mdc-theme-primary, #3f51b5);
+    background: rgba(127, 127, 127, .12);
+    color: inherit;
     font-size: .82rem;
+    font-weight: 600;
     line-height: 1.2;
 }
 
-.vote-cast-status mat-icon {
+.vote-recorded-status mat-icon {
     width: 18px;
     height: 18px;
     flex: 0 0 18px;

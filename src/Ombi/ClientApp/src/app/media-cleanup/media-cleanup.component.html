@@ -70,7 +70,7 @@
                 </div>
                 <div class="dashboard-counts">
                     <span class="vote-needed-count" *ngIf="pendingVoteCount">{{ pendingVoteCount }} vote{{ pendingVoteCount === 1 ? '' : 's' }} needed</span>
-                    <span class="vote-cast-count" *ngIf="castVoteCount">{{ castVoteCount }} vote{{ castVoteCount === 1 ? '' : 's' }} cast</span>
+                    <span class="vote-recorded-count" *ngIf="castVoteCount">{{ castVoteCount }} vote{{ castVoteCount === 1 ? '' : 's' }} recorded</span>
                     <span *ngIf="pendingApprovalItems.length">{{ pendingApprovalItems.length }} approval{{ pendingApprovalItems.length === 1 ? '' : 's' }} pending</span>
                     <span *ngIf="scheduledRemovalItems.length">{{ scheduledRemovalItems.length }} removal{{ scheduledRemovalItems.length === 1 ? '' : 's' }} scheduled</span>
                 </div>
@@ -96,9 +96,9 @@
                         <mat-card-content>
                             <span class="attention-label"
                                   [class.vote-needed-label]="!hasVoted(item)"
-                                  [class.vote-cast-label]="hasVoted(item)">
+                                  [class.vote-recorded-label]="hasVoted(item)">
                                 <mat-icon>{{ hasVoted(item) ? 'how_to_vote' : 'priority_high' }}</mat-icon>
-                                {{ hasVoted(item) ? 'Voting active' : 'Vote needed' }}
+                                {{ hasVoted(item) ? 'Vote recorded' : 'Vote needed' }}
                             </span>
                             <h4>{{ item.title }}</h4>
                             <p class="metadata">{{ mediaTypeText(item.requestType) }}<span *ngIf="item.requestedBy"> · Requested by {{ item.requestedBy }}</span></p>
@@ -120,8 +120,8 @@
                                     <mat-icon>delete_outline</mat-icon> Remove
                                 </button>
                             </div>
-                            <div class="vote-cast-status" *ngIf="hasVoted(item)">
-                                <mat-icon>published_with_changes</mat-icon>
+                            <div class="vote-recorded-status" *ngIf="hasVoted(item)">
+                                <mat-icon>check_circle</mat-icon>
                                 <span>You voted <strong>{{ voteText(item) }}</strong> · Change vote</span>
                             </div>
                         </mat-card-content>
