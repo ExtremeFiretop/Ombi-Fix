@@ -1,10 +1,4 @@
-## [4.60.18](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.16...v4.60.18) (2026-08-23)
-
-
-### Reverts
-
-* Revert "chore(release): :rocket: v4.60.17 [skip ci]" ([f8a90b2](https://github.com/ExtremeFiretop/Ombi-Fix/commit/f8a90b256f33e42b9f508d767380a547b3979295))
-* Revert "Fix Storage Errors" ([d6ce5a0](https://github.com/ExtremeFiretop/Ombi-Fix/commit/d6ce5a05691d0485d788e3492aad5fb4fdf5beef))
+## [4.60.19](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.16...v4.60.19) (2026-08-24)
 
 
 
