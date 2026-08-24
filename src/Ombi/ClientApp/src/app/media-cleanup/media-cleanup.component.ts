@@ -152,11 +152,23 @@ export class MediaCleanupComponent implements OnInit {
                 item.canVote &&
                 item.cleanup?.origin === MediaCleanupOrigin.Community &&
                 item.cleanup.status === MediaCleanupStatus.Voting)
-            .sort((left, right) => {
-                const leftHasVote = left.cleanup?.myVote !== undefined && left.cleanup?.myVote !== null;
-                const rightHasVote = right.cleanup?.myVote !== undefined && right.cleanup?.myVote !== null;
-                return Number(leftHasVote) - Number(rightHasVote);
-            });
+            .sort((left, right) => Number(this.hasVoted(left)) - Number(this.hasVoted(right)));
+    }
+
+    public hasVoted(item: IMediaCleanupItem): boolean {
+        return item.cleanup?.myVote !== undefined && item.cleanup?.myVote !== null;
+    }
+
+    public voteText(item: IMediaCleanupItem): string {
+        return item.cleanup?.myVote === MediaCleanupVoteType.Keep ? "Keep" : "Remove";
+    }
+
+    public get pendingVoteCount(): number {
+        return this.activeVoteItems.filter(item => !this.hasVoted(item)).length;
+    }
+
+    public get castVoteCount(): number {
+        return this.activeVoteItems.length - this.pendingVoteCount;
     }
 
     public get pendingApprovalItems(): IMediaCleanupItem[] {

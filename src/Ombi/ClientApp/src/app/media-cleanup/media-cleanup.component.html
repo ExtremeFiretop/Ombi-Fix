@@ -65,11 +65,12 @@
         <section class="attention-dashboard" *ngIf="hasDashboardItems">
             <div class="dashboard-title">
                 <div>
-                    <h2>Needs your attention</h2>
-                    <p>Track active votes, review approvals, and stop scheduled removals during the grace period.</p>
+                    <h2>Cleanup activity</h2>
+                    <p>Items that need action are shown first. Active votes stay visible so you can change them while voting is open.</p>
                 </div>
                 <div class="dashboard-counts">
-                    <span *ngIf="activeVoteItems.length">{{ activeVoteItems.length }} active vote{{ activeVoteItems.length === 1 ? '' : 's' }}</span>
+                    <span class="vote-needed-count" *ngIf="pendingVoteCount">{{ pendingVoteCount }} vote{{ pendingVoteCount === 1 ? '' : 's' }} needed</span>
+                    <span class="vote-cast-count" *ngIf="castVoteCount">{{ castVoteCount }} vote{{ castVoteCount === 1 ? '' : 's' }} cast</span>
                     <span *ngIf="pendingApprovalItems.length">{{ pendingApprovalItems.length }} approval{{ pendingApprovalItems.length === 1 ? '' : 's' }} pending</span>
                     <span *ngIf="scheduledRemovalItems.length">{{ scheduledRemovalItems.length }} removal{{ scheduledRemovalItems.length === 1 ? '' : 's' }} scheduled</span>
                 </div>
@@ -79,7 +80,7 @@
                 <div class="queue-heading">
                     <div>
                         <h3>Community voting</h3>
-                        <p>Active nominations stay here until voting closes. You can change your vote while voting is open.</p>
+                        <p>Items awaiting your vote appear first. Items you have already voted on stay here so you can change your choice until voting closes.</p>
                     </div>
                     <div class="queue-nav" *ngIf="activeVoteItems.length > 1">
                         <button mat-icon-button type="button" aria-label="Previous cleanup vote" (click)="scrollQueue(voteQueue, -1)"><mat-icon>chevron_left</mat-icon></button>
@@ -87,17 +88,22 @@
                     </div>
                 </div>
                 <div class="attention-track" #voteQueue>
-                    <mat-card class="attention-card vote-card" *ngFor="let item of activeVoteItems">
+                    <mat-card class="attention-card vote-card"
+                              *ngFor="let item of activeVoteItems"
+                              [class.vote-card-pending]="!hasVoted(item)"
+                              [class.vote-card-voted]="hasVoted(item)">
                         <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
                         <mat-card-content>
-                            <span class="attention-label"><mat-icon>how_to_vote</mat-icon> {{ item.cleanup?.myVote === undefined || item.cleanup?.myVote === null ? 'Vote needed' : 'Voting active' }}</span>
+                            <span class="attention-label"
+                                  [class.vote-needed-label]="!hasVoted(item)"
+                                  [class.vote-cast-label]="hasVoted(item)">
+                                <mat-icon>{{ hasVoted(item) ? 'how_to_vote' : 'priority_high' }}</mat-icon>
+                                {{ hasVoted(item) ? 'Voting active' : 'Vote needed' }}
+                            </span>
                             <h4>{{ item.title }}</h4>
                             <p class="metadata">{{ mediaTypeText(item.requestType) }}<span *ngIf="item.requestedBy"> · Requested by {{ item.requestedBy }}</span></p>
                             <p class="metadata" *ngIf="item.cleanup as cleanup">{{ cleanup.deleteVotes }} remove · {{ cleanup.keepVotes }} keep</p>
-                            <p class="metadata" *ngIf="item.cleanup?.myVote !== undefined && item.cleanup?.myVote !== null">
-                                Your vote: {{ item.cleanup?.myVote === MediaCleanupVoteType.Keep ? 'Keep' : 'Remove' }}
-                            </p>
-                            <p class="metadata" *ngIf="item.cleanup?.myVote === undefined || item.cleanup?.myVote === null">You have not voted yet.</p>
+                            <p class="vote-needed-message" *ngIf="!hasVoted(item)">You have not voted yet.</p>
                             <p class="metadata" *ngIf="item.cleanup?.votingEndsAt">Voting ends {{ item.cleanup?.votingEndsAt | date:'medium' }}</p>
                             <ng-container *ngTemplateOutlet="voterDetails; context: { $implicit: item }"></ng-container>
                             <div class="actions">
@@ -113,6 +119,10 @@
                                         (click)="vote(item, MediaCleanupVoteType.Delete)">
                                     <mat-icon>delete_outline</mat-icon> Remove
                                 </button>
+                            </div>
+                            <div class="vote-cast-status" *ngIf="hasVoted(item)">
+                                <mat-icon>published_with_changes</mat-icon>
+                                <span>You voted <strong>{{ voteText(item) }}</strong> · Change vote</span>
                             </div>
                         </mat-card-content>
                     </mat-card>
