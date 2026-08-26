@@ -209,8 +209,23 @@ namespace Ombi.Core.Senders
                 tagToUse = s.Tag;
             }
 
-            // Overrides on the request take priority
-            if (model.ParentRequest.QualityOverride.HasValue && model.ParentRequest.QualityOverride.Value > 0)
+            // A child-level value records what was selected for this specific request so
+            // pending approvals cannot lose their profile choice. ParentRequest remains the
+            // series-wide fallback for older requests and subsequent requests with no choice.
+            var currentRequestHasProfileChoice = model.QualityOverride.HasValue;
+            var currentRequestQualityOverride = model.QualityOverride.GetValueOrDefault();
+            var profileOverrideRequested = currentRequestHasProfileChoice && currentRequestQualityOverride > 0;
+
+            if (currentRequestHasProfileChoice)
+            {
+                if (currentRequestQualityOverride > 0)
+                {
+                    qualityToUse = currentRequestQualityOverride;
+                }
+                // A zero child value explicitly means no request-level override; do not fall
+                // back to a previous parent override for this request.
+            }
+            else if (model.ParentRequest.QualityOverride.HasValue && model.ParentRequest.QualityOverride.Value > 0)
             {
                 qualityToUse = model.ParentRequest.QualityOverride.Value;
             }
@@ -287,12 +302,35 @@ namespace Ombi.Core.Senders
                 }
                 else
                 {
+                    var seriesNeedsUpdate = false;
+                    if (profileOverrideRequested && existingSeries.qualityProfileId != qualityToUse)
+                    {
+                        // Sonarr quality profiles are series-wide. Selecting a new profile for
+                        // any season therefore reprofiles the whole existing series.
+                        existingSeries.qualityProfileId = qualityToUse;
+                        seriesNeedsUpdate = true;
+                    }
+
                     if (existingSeries is { monitored: false })
                     {
                         existingSeries.monitored = true;
-                        await SonarrApi.UpdateSeries(existingSeries,  s.ApiKey, s.FullUri);
+                        seriesNeedsUpdate = true;
                     }
+
+                    if (seriesNeedsUpdate)
+                    {
+                        existingSeries = await SonarrApi.UpdateSeries(existingSeries, s.ApiKey, s.FullUri);
+                    }
+
                     await SendToSonarr(model, existingSeries, s, options);
+
+                    if (profileOverrideRequested && !s.AddOnly)
+                    {
+                        // Sonarr profiles are series-wide. An explicit profile selection therefore
+                        // re-searches the entire monitored series, even when the series was already
+                        // on that profile, instead of limiting the search to the new season.
+                        await SonarrApi.SeriesSearch(existingSeries.id, s.ApiKey, s.FullUri);
+                    }
                 }
 
                 return new NewSeries

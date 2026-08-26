@@ -24,3 +24,4 @@ export * from "./ITester";
 export * from "./IRecentlyRequested";
 
 export * from "./IMediaCleanup";
+export * from "./IQualityProfileSelection";

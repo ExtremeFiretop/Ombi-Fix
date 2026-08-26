@@ -7,8 +7,10 @@ using Ombi.Api.External.ExternalApis.Sonarr;
 using Ombi.Api.External.ExternalApis.Sonarr.Models;
 using Ombi.Api.External.ExternalApis.Sonarr.Models.V3;
 using Ombi.Attributes;
+using Ombi.Core.Services;
 using Ombi.Core.Settings;
 using Ombi.Settings.Settings.Models.External;
+using Ombi.Helpers;
 
 namespace Ombi.Controllers.V1.External
 {
@@ -17,16 +19,18 @@ namespace Ombi.Controllers.V1.External
     [Produces("application/json")]
     public class SonarrController : Controller
     {
-        public SonarrController(ISonarrApi sonarr, ISonarrV3Api sonarrv3, ISettingsService<SonarrSettings> settings)
+        public SonarrController(ISonarrApi sonarr, ISonarrV3Api sonarrv3, ISettingsService<SonarrSettings> settings, IQualityProfileSelectionService qualityProfileSelection)
         {
             SonarrApi = sonarr;
             SonarrV3Api = sonarrv3;
             SonarrSettings = settings;
+            QualityProfileSelection = qualityProfileSelection;
         }
 
         private ISonarrApi SonarrApi { get; }
         private ISonarrV3Api SonarrV3Api { get; }
         private ISettingsService<SonarrSettings> SonarrSettings { get; }
+        private IQualityProfileSelectionService QualityProfileSelection { get; }
 
         /// <summary>
         /// Gets the Sonarr profiles.
@@ -38,6 +42,31 @@ namespace Ombi.Controllers.V1.External
         public Task<IEnumerable<SonarrProfile>> GetProfiles([FromBody] SonarrSettings settings)
         {
             return SonarrV3Api.GetProfiles(settings.ApiKey, settings.FullUri);
+        }
+
+        [HttpGet("Profiles/selectable")]
+        public async Task<IActionResult> GetSelectableProfiles()
+        {
+            if (!CanSelectQualityProfile())
+            {
+                return Forbid();
+            }
+
+            try
+            {
+                return Ok(await QualityProfileSelection.GetSonarrProfiles());
+            }
+            catch
+            {
+                return StatusCode(503, new { message = "Sonarr quality profiles are temporarily unavailable." });
+            }
+        }
+
+        private bool CanSelectQualityProfile()
+        {
+            return User.IsInRole(OmbiRoles.Admin) ||
+                   User.IsInRole(OmbiRoles.PowerUser) ||
+                   User.IsInRole(OmbiRoles.SelectQualityProfile);
         }
 
         /// <summary>

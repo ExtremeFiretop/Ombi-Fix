@@ -569,6 +569,9 @@ namespace Ombi.Store.Migrations.OmbiPostgres
                     b.Property<int>("ParentRequestId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("QualityOverride")
+                        .HasColumnType("integer");
+
                     b.Property<int>("RequestType")
                         .HasColumnType("integer");
 
@@ -774,6 +777,9 @@ namespace Ombi.Store.Migrations.OmbiPostgres
                         .HasColumnType("text");
 
                     b.Property<int>("QualityOverride")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QualityOverride4K")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("ReleaseDate")

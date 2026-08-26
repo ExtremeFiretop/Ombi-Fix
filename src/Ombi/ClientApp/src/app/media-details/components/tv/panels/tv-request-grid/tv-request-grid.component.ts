@@ -16,6 +16,8 @@ import { RequestServiceV2 } from "../../../../../services/requestV2.service";
 import { AdminRequestDialogComponent } from "../../../../../shared/admin-request-dialog/admin-request-dialog.component";
 import { OmbiDatePipe } from "../../../../../pipes/OmbiDatePipe";
 import { MatCardModule } from "@angular/material/card";
+import { firstValueFrom } from "rxjs";
+import { QualityProfileRequestDialogComponent } from "../../../../../shared/quality-profile-request-dialog/quality-profile-request-dialog.component";
 
 @Component({
     standalone: true,
@@ -38,6 +40,7 @@ export class TvRequestGridComponent {
     @Input() public tv: ISearchTvResultV2;
     @Input() public tvRequest: IChildRequests[];
     @Input() public isAdmin: boolean;
+    @Input() public canSelectQualityProfile = false;
     public selection = new SelectionModel<IEpisodesRequests>(true, []);
     public selectedSeasonIndex: number = 0;
 
@@ -184,6 +187,19 @@ export class TvRequestGridComponent {
                 }
             });
         } else {
+            if (this.canSelectQualityProfile) {
+                const profileDialog = this.dialog.open(QualityProfileRequestDialogComponent, {
+                    width: "460px",
+                    data: { type: RequestType.tvShow },
+                    panelClass: "modal-panel",
+                });
+                const profileSelection = await firstValueFrom(profileDialog.afterClosed());
+                if (!profileSelection) {
+                    return;
+                }
+                viewModel.qualityPathOverride = profileSelection.profileId;
+            }
+
             const requestResult = await this.requestServiceV2.requestTv(viewModel).toPromise();
             if (requestResult) {
                 this.postRequest(requestResult, selectedEpisodes, { firstSeason, latestSeason, requestAll });

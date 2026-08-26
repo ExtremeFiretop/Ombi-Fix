@@ -544,6 +544,9 @@ namespace Ombi.Store.Migrations.OmbiMySql
                     b.Property<int>("ParentRequestId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("QualityOverride")
+                        .HasColumnType("int");
+
                     b.Property<int>("RequestType")
                         .HasColumnType("int");
 
@@ -741,6 +744,9 @@ namespace Ombi.Store.Migrations.OmbiMySql
                         .HasColumnType("longtext");
 
                     b.Property<int>("QualityOverride")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QualityOverride4K")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("ReleaseDate")

@@ -47,8 +47,9 @@ namespace Ombi.Core.Tests.Engine.V2
             var mediaCache = new Mock<IMediaCacheService>();
             var featureService = new Mock<IFeatureService>();
             var userPlayedMovieRepository = new Mock<IUserPlayedMovieRepository>();
+            var qualityProfileSelection = new Mock<IQualityProfileSelectionService>();
             _engine = new MovieRequestEngine(movieApi.Object, requestService.Object, user.Object, notificationHelper.Object, rules.Object, movieSender.Object,
-                logger.Object, userManager.Object, requestLogRepo.Object, cache.Object, ombiSettings.Object, requestSubs.Object, mediaCache.Object, featureService.Object, userPlayedMovieRepository.Object);
+                logger.Object, userManager.Object, requestLogRepo.Object, cache.Object, ombiSettings.Object, requestSubs.Object, mediaCache.Object, featureService.Object, userPlayedMovieRepository.Object, qualityProfileSelection.Object);
         }
 
         [Test]

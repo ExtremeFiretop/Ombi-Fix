@@ -230,6 +230,7 @@ namespace Ombi.Controllers.V1
             await CreateRole(OmbiRoles.DeleteOwnMedia);
             await CreateRole(OmbiRoles.VoteOnMediaCleanup);
             await CreateRole(OmbiRoles.ManageMediaCleanup);
+            await CreateRole(OmbiRoles.SelectQualityProfile);
         }
 
         private async Task CreateRole(string role)
@@ -772,6 +773,7 @@ namespace Ombi.Controllers.V1
             await CreateRole(OmbiRoles.DeleteOwnMedia);
             await CreateRole(OmbiRoles.VoteOnMediaCleanup);
             await CreateRole(OmbiRoles.ManageMediaCleanup);
+            await CreateRole(OmbiRoles.SelectQualityProfile);
 
             var claims = new List<ClaimCheckboxes>();
             // Add the missing claims

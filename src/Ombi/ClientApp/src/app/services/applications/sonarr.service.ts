@@ -4,7 +4,7 @@ import { Injectable, Inject } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
 import { Observable } from "rxjs";
 
-import { ISonarrSettings, ITag } from "../../interfaces";
+import { IQualityProfileOption, ISonarrSettings, ITag } from "../../interfaces";
 import { ILanguageProfiles, ISonarrProfile, ISonarrRootFolder } from "../../interfaces";
 import { ServiceHelpers } from "../service.helpers";
 
@@ -26,6 +26,10 @@ export class SonarrService extends ServiceHelpers {
     }
     public getQualityProfilesWithoutSettings(): Observable<ISonarrProfile[]> {
         return this.http.get<ISonarrProfile[]>(`${this.url}/Profiles/`, {headers: this.headers});
+    }
+
+    public getSelectableQualityProfiles(): Observable<IQualityProfileOption[]> {
+        return this.http.get<IQualityProfileOption[]>(`${this.url}/Profiles/selectable`, {headers: this.headers});
     }
 
     public getV3LanguageProfiles(settings: ISonarrSettings): Observable<ILanguageProfiles[]> {

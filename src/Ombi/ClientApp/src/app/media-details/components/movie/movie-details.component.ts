@@ -41,6 +41,7 @@ import { SafePipe } from '../../../pipes/SafePipe';
 import { OmbiDatePipe } from '../../../pipes/OmbiDatePipe';
 import { ThousandShortPipe } from '../../../pipes/ThousandShortPipe';
 import { TranslateStatusPipe } from '../../../pipes/TranslateStatus';
+import { QualityProfileRequestDialogComponent } from "../../../shared/quality-profile-request-dialog/quality-profile-request-dialog.component";
 
 @Component({
     standalone: true,
@@ -82,6 +83,7 @@ export class MovieDetailsComponent implements OnInit {
 	public isAdmin: boolean;
 	public advancedOptions: IAdvancedData;
 	public showAdvanced: boolean; // Set on the UI
+	public canSelectQualityProfile = false;
 	public issuesEnabled: boolean;
 	public roleName4k = 'Request4KMovie';
 	public is4KEnabled = false;
@@ -141,6 +143,7 @@ export class MovieDetailsComponent implements OnInit {
 		this.is4KEnabled = this.featureFacade.is4kEnabled();
 		this.issuesEnabled = this.settingsState.getIssue();
 		this.isAdmin = this.auth.hasRole('admin') || this.auth.hasRole('poweruser');
+		this.canSelectQualityProfile = !this.isAdmin && this.auth.hasRole('SelectQualityProfile');
 
 		if (this.isAdmin) {
 			this.showAdvanced = await firstValueFrom(this.radarrService.isRadarrEnabled());
@@ -213,12 +216,26 @@ export class MovieDetailsComponent implements OnInit {
 				}
 			});
 		} else {
+			let qualityPathOverride: number | undefined;
+			if (this.canSelectQualityProfile) {
+				const profileDialog = this.dialog.open(QualityProfileRequestDialogComponent, {
+					width: '460px',
+					data: { type: RequestType.movie, is4K },
+					panelClass: 'modal-panel',
+				});
+				const profileSelection = await firstValueFrom(profileDialog.afterClosed());
+				if (!profileSelection) {
+					return;
+				}
+				qualityPathOverride = profileSelection.profileId;
+			}
+
 			const result = await firstValueFrom(
 				this.requestService.requestMovie({
 					theMovieDbId: this.theMovidDbId,
 					languageCode: this.translate.currentLang,
 					requestOnBehalf: userId,
-					qualityPathOverride: undefined,
+					qualityPathOverride,
 					rootFolderOverride: undefined,
 					is4KRequest: is4K,
 				}),

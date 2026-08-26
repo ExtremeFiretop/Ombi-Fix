@@ -6,6 +6,7 @@ using Ombi.Api.External.ExternalApis.Radarr;
 using Ombi.Api.External.ExternalApis.Radarr.Models;
 using Ombi.Api.External.ExternalApis.Radarr.Models.V3;
 using Ombi.Attributes;
+using Ombi.Core.Services;
 using Ombi.Core.Settings;
 using Ombi.Helpers;
 using Ombi.Settings.Settings.Models.External;
@@ -22,16 +23,19 @@ namespace Ombi.Controllers.V1.External
         public RadarrController(
             ISettingsService<RadarrSettings> settings,
             ISettingsService<Radarr4KSettings> radarr4kSettings,
-            IRadarrV3Api radarrV3Api)
+            IRadarrV3Api radarrV3Api,
+            IQualityProfileSelectionService qualityProfileSelection)
         {
             _radarrSettings = settings;
             _radarr4KSettings = radarr4kSettings;
             _radarrV3Api = radarrV3Api;
+            _qualityProfileSelection = qualityProfileSelection;
         }
 
         private readonly ISettingsService<RadarrSettings> _radarrSettings;
         private readonly ISettingsService<Radarr4KSettings> _radarr4KSettings;
         private readonly IRadarrV3Api _radarrV3Api;
+        private readonly IQualityProfileSelectionService _qualityProfileSelection;
         /// <summary>
         /// Gets the Radarr profiles.
         /// </summary>
@@ -130,6 +134,49 @@ namespace Ombi.Controllers.V1.External
                 return await _radarrV3Api.GetRootFolders(settings.ApiKey, settings.FullUri);
             }
             return null;
+        }
+
+        [HttpGet("Profiles/selectable")]
+        public async Task<IActionResult> GetSelectableProfiles()
+        {
+            if (!CanSelectQualityProfile())
+            {
+                return Forbid();
+            }
+
+            try
+            {
+                return Ok(await _qualityProfileSelection.GetRadarrProfiles(false));
+            }
+            catch
+            {
+                return StatusCode(503, new { message = "Radarr quality profiles are temporarily unavailable." });
+            }
+        }
+
+        [HttpGet("Profiles/selectable/4k")]
+        public async Task<IActionResult> GetSelectableProfiles4K()
+        {
+            if (!CanSelectQualityProfile())
+            {
+                return Forbid();
+            }
+
+            try
+            {
+                return Ok(await _qualityProfileSelection.GetRadarrProfiles(true));
+            }
+            catch
+            {
+                return StatusCode(503, new { message = "Radarr 4K quality profiles are temporarily unavailable." });
+            }
+        }
+
+        private bool CanSelectQualityProfile()
+        {
+            return User.IsInRole(OmbiRoles.Admin) ||
+                   User.IsInRole(OmbiRoles.PowerUser) ||
+                   User.IsInRole(OmbiRoles.SelectQualityProfile);
         }
 
         /// <summary>

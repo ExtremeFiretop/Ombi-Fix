@@ -77,6 +77,7 @@ export class TvDetailsComponent implements OnInit {
     public manageOwnRequests: boolean;
     public advancedOptions: IAdvancedData;
     public showAdvanced: boolean; // Set on the UI
+    public canSelectQualityProfile = false;
     public requestType = RequestType.tvShow;
     public issuesEnabled: boolean;
     public cleanupOverview?: IMediaCleanupOverview;
@@ -112,6 +113,7 @@ export class TvDetailsComponent implements OnInit {
 
         this.issuesEnabled = this.settingsState.getIssue();
         this.isAdmin = this.auth.hasRole("admin") || this.auth.hasRole("poweruser");
+        this.canSelectQualityProfile = !this.isAdmin && this.auth.hasRole("SelectQualityProfile");
         this.manageOwnRequests = this.auth.hasRole('ManageOwnRequests');
 
         if (this.isAdmin) {

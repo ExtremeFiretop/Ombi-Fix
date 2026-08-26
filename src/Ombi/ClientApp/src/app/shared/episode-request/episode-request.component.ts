@@ -14,10 +14,13 @@ import { ISeasonsViewModel, IEpisodesRequests, INewSeasonRequests, ITvRequestVie
 import { RequestServiceV2 } from "../../services/requestV2.service";
 import { AdminRequestDialogComponent } from "../admin-request-dialog/admin-request-dialog.component";
 import { OmbiDatePipe } from "../../pipes/OmbiDatePipe";
+import { firstValueFrom } from "rxjs";
+import { QualityProfileRequestDialogComponent } from "../quality-profile-request-dialog/quality-profile-request-dialog.component";
 
 export interface EpisodeRequestData {
     series: ISearchTvResultV2;
     isAdmin: boolean;
+    canSelectQualityProfile?: boolean;
     requestOnBehalf: string | undefined;
 }
 @Component({
@@ -94,6 +97,19 @@ export class EpisodeRequestComponent {
                 }
             });
         } else {
+            if (this.data.canSelectQualityProfile) {
+                const profileDialog = this.dialog.open(QualityProfileRequestDialogComponent, {
+                    width: "460px",
+                    data: { type: RequestType.tvShow },
+                    panelClass: "modal-panel",
+                });
+                const profileSelection = await firstValueFrom(profileDialog.afterClosed());
+                if (!profileSelection) {
+                    return;
+                }
+                viewModel.qualityPathOverride = profileSelection.profileId;
+            }
+
             const requestResult = await this.requestService.requestTv(viewModel).toPromise();
             this.postRequest(requestResult);
         }

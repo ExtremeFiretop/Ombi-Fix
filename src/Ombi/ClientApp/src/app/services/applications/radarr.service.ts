@@ -3,7 +3,7 @@ import { HttpClient } from "@angular/common/http";
 import { Injectable, Inject } from "@angular/core";
 import { Observable } from "rxjs";
 
-import { IRadarrProfile, IRadarrRootFolder, ITag } from "../../interfaces";
+import { IQualityProfileOption, IRadarrProfile, IRadarrRootFolder, ITag } from "../../interfaces";
 import { IRadarrSettings } from "../../interfaces";
 import { ServiceHelpers } from "../service.helpers";
 
@@ -26,6 +26,11 @@ export class RadarrService extends ServiceHelpers {
 
     public getQualityProfilesFromSettings(): Observable<IRadarrProfile[]> {
         return this.http.get<IRadarrProfile[]>(`${this.url}/Profiles/`, { headers: this.headers });
+    }
+
+    public getSelectableQualityProfiles(is4K = false): Observable<IQualityProfileOption[]> {
+        const suffix = is4K ? "/4k" : "";
+        return this.http.get<IQualityProfileOption[]>(`${this.url}/Profiles/selectable${suffix}`, { headers: this.headers });
     }
 
     public getRootFolders4kFromSettings(): Observable<IRadarrRootFolder[]> {

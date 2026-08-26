@@ -255,6 +255,7 @@ namespace Ombi.DependencyInjection
             services.AddTransient<IChangeLogProcessor, ChangeLogProcessor>();
             services.AddScoped<IFeatureService, FeatureService>();
             services.AddTransient<IRecentlyRequestedService, RecentlyRequestedService>();
+            services.AddTransient<IQualityProfileSelectionService, QualityProfileSelectionService>();
             services.AddTransient<IPlexService, PlexService>();
             services.AddScoped<IPlexWatchlistStatusStore, PlexWatchlistStatusStore>();
             services.AddSingleton<IFileSystem, FileSystem>();

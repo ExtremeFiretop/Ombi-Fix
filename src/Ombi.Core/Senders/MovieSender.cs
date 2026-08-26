@@ -183,10 +183,13 @@ namespace Ombi.Core.Senders
                 }
             }
 
-            // Overrides on the request take priority
-            if (model.QualityOverride > 0)
+            // Overrides on the request take priority. Normal and 4K requests have
+            // independent profile storage because they can target different Radarr instances.
+            var requestQualityOverride = is4k ? model.QualityOverride4K : model.QualityOverride;
+            var profileOverrideRequested = requestQualityOverride > 0;
+            if (profileOverrideRequested)
             {
-                qualityToUse = model.QualityOverride;
+                qualityToUse = requestQualityOverride;
             }
             if (model.RootPathOverride > 0)
             {
@@ -218,19 +221,34 @@ namespace Ombi.Core.Senders
                 }
                 return new SenderResult { Success = true, Sent = false };
             }
-            // We have the movie, check if we can request it or change the status
+            // We have the movie. A request-time quality selection is an explicit request to
+            // use that profile even when Radarr already contains the movie. Reprofile first,
+            // then search so Radarr can upgrade/reacquire it under the newly selected cutoff.
+            var movieNeedsUpdate = false;
+            if (profileOverrideRequested && existingMovie.qualityProfileId != qualityToUse)
+            {
+                existingMovie.qualityProfileId = qualityToUse;
+                movieNeedsUpdate = true;
+            }
+
             if (!existingMovie.monitored)
             {
-                // let's set it to monitored and search for it
                 existingMovie.monitored = true;
+                movieNeedsUpdate = true;
+            }
 
+            if (movieNeedsUpdate)
+            {
                 await _radarrV3Api.UpdateMovie(existingMovie, settings.ApiKey, settings.FullUri);
-                // Search for it
-                if (!settings.AddOnly)
-                {
-                    await _radarrV3Api.MovieSearch(new[] { existingMovie.id }, settings.ApiKey, settings.FullUri);
-                }
+            }
 
+            if (!settings.AddOnly && (movieNeedsUpdate || profileOverrideRequested))
+            {
+                await _radarrV3Api.MovieSearch(new[] { existingMovie.id }, settings.ApiKey, settings.FullUri);
+            }
+
+            if (movieNeedsUpdate || profileOverrideRequested)
+            {
                 return new SenderResult { Success = true, Sent = true };
             }
 

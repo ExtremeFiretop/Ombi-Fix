@@ -22,5 +22,6 @@ namespace Ombi.Helpers
         public const string DeleteOwnMedia = nameof(DeleteOwnMedia);
         public const string VoteOnMediaCleanup = nameof(VoteOnMediaCleanup);
         public const string ManageMediaCleanup = nameof(ManageMediaCleanup);
+        public const string SelectQualityProfile = nameof(SelectQualityProfile);
     }
 }

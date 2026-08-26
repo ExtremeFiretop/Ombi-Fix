@@ -17,6 +17,8 @@ import { MatDialog } from "@angular/material/dialog";
 import { IMovieRequestModel, RequestType } from "../../../interfaces";
 import { TranslateService } from "@ngx-translate/core";
 import { ImageComponent } from "../../../components";
+import { AuthService } from "../../../auth/auth.service";
+import { QualityProfileRequestDialogComponent } from "../../../shared/quality-profile-request-dialog/quality-profile-request-dialog.component";
 
 @Component({
     standalone: true,
@@ -44,6 +46,7 @@ export class DiscoverCardComponent implements OnInit {
     public fullyLoaded = false;
     public loading: boolean;
     public allow4KButton: boolean = false;
+    public canSelectQualityProfile = false;
 
     public requestable: boolean;
 
@@ -51,9 +54,10 @@ export class DiscoverCardComponent implements OnInit {
     private tvSearchResult: ISearchTvResultV2;
 
     constructor(private searchService: SearchV2Service, private dialog: MatDialog, private requestService: RequestService,
-        public messageService: MessageService, private translate: TranslateService) { }
+        public messageService: MessageService, private translate: TranslateService, private auth: AuthService) { }
 
     public ngOnInit() {
+        this.canSelectQualityProfile = !this.isAdmin && this.auth.hasRole("SelectQualityProfile");
         if (this.result.type == RequestType.tvShow) {
             this.fullyLoaded = true;
             this.getExtraTvInfo();
@@ -150,7 +154,7 @@ export class DiscoverCardComponent implements OnInit {
           case RequestType.tvShow:
             const dialog = this.dialog.open(EpisodeRequestComponent, {
               width: "700px",
-              data: { series: this.tvSearchResult, isAdmin: this.isAdmin },
+              data: { series: this.tvSearchResult, isAdmin: this.isAdmin, canSelectQualityProfile: this.canSelectQualityProfile },
               panelClass: "modal-panel",
             });
             dialog.afterClosed().subscribe(() => (this.loading = false));
@@ -166,7 +170,24 @@ export class DiscoverCardComponent implements OnInit {
             };
 
             if (!this.isAdmin) {
-              this.requestMovie(movieRequest);
+              if (!this.canSelectQualityProfile) {
+                this.requestMovie(movieRequest);
+                break;
+              }
+
+              const profileDialog = this.dialog.open(QualityProfileRequestDialogComponent, {
+                width: "460px",
+                data: { type: RequestType.movie, is4K: is4k },
+                panelClass: "modal-panel",
+              });
+              profileDialog.afterClosed().subscribe((profileSelection) => {
+                if (!profileSelection) {
+                  this.loading = false;
+                  return;
+                }
+                movieRequest.qualityPathOverride = profileSelection.profileId;
+                this.requestMovie(movieRequest);
+              });
               break;
             }
 

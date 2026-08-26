@@ -25,6 +25,9 @@ function createComponent() {
     instant: vi.fn((key: string) => key),
     currentLang: 'en',
   };
+  const mockAuth = {
+    hasRole: vi.fn().mockReturnValue(false),
+  };
 
   const comp = new DiscoverCardComponent(
     mockSearchService as any,
@@ -32,9 +35,10 @@ function createComponent() {
     mockRequestService as any,
     mockMessageService as any,
     mockTranslate as any,
+    mockAuth as any,
   );
 
-  return { comp, mockSearchService, mockDialog, mockRequestService, mockMessageService, mockTranslate };
+  return { comp, mockSearchService, mockDialog, mockRequestService, mockMessageService, mockTranslate, mockAuth };
 }
 
 function makeResult(overrides: Partial<IDiscoverCardResult> = {}): IDiscoverCardResult {
@@ -222,6 +226,19 @@ describe('DiscoverCardComponent', () => {
 
       expect(mockMessageService.sendRequestEngineResultError).toHaveBeenCalled();
       expect(comp.loading).toBe(false);
+    });
+
+    it('should open quality profile dialog for a permitted non-admin movie request', () => {
+      const { comp, mockDialog, mockAuth } = createComponent();
+      comp.result = makeResult({ type: RequestType.movie });
+      comp.isAdmin = false;
+      mockAuth.hasRole.mockReturnValue(true);
+      comp.ngOnInit();
+
+      const event = { preventDefault: vi.fn() };
+      comp.request(event, false);
+
+      expect(mockDialog.open).toHaveBeenCalled();
     });
 
     it('should open admin dialog for admin users', () => {

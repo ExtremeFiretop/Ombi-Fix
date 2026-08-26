@@ -13,6 +13,7 @@ namespace Ombi.Store.Entities.Requests
         public int ParentRequestId { get; set; }
         public int? IssueId { get; set; }
         public SeriesType SeriesType { get; set; }
+        public int? QualityOverride { get; set; }
 
         /// <summary>
         /// This is to see if the user is subscribed in the UI

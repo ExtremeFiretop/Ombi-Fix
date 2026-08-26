@@ -19,6 +19,7 @@ using Ombi.Core.Models.UI;
 using Ombi.Core.Rule;
 using Ombi.Core.Rule.Interfaces;
 using Ombi.Core.Senders;
+using Ombi.Core.Services;
 using Ombi.Core.Settings;
 using Ombi.Settings.Settings.Models;
 using Ombi.Store.Entities.Requests;
@@ -36,7 +37,8 @@ namespace Ombi.Core.Engine
             INotificationHelper helper, IRuleEvaluator rule, OmbiUserManager manager, ILogger<TvRequestEngine> logger,
             ITvSender sender, IRepository<RequestLog> rl, ISettingsService<OmbiSettings> settings, ICacheService cache,
             IRepository<RequestSubscription> sub, IMediaCacheService mediaCacheService,
-            IUserPlayedEpisodeRepository userPlayedEpisodeRepository) : base(user, requestService, rule, manager, cache, settings, sub)
+            IUserPlayedEpisodeRepository userPlayedEpisodeRepository,
+            IQualityProfileSelectionService qualityProfileSelectionService) : base(user, requestService, rule, manager, cache, settings, sub)
         {
             TvApi = tvApi;
             MovieDbApi = movApi;
@@ -46,6 +48,7 @@ namespace Ombi.Core.Engine
             _requestLog = rl;
             _mediaCacheService = mediaCacheService;
             _userPlayedEpisodeRepository = userPlayedEpisodeRepository;
+            _qualityProfileSelectionService = qualityProfileSelectionService;
         }
 
         private INotificationHelper NotificationHelper { get; }
@@ -57,6 +60,7 @@ namespace Ombi.Core.Engine
         private readonly IRepository<RequestLog> _requestLog;
         private readonly IMediaCacheService _mediaCacheService;
         private readonly IUserPlayedEpisodeRepository _userPlayedEpisodeRepository;
+        private readonly IQualityProfileSelectionService _qualityProfileSelectionService;
 
         public async Task<RequestEngineResult> RequestTvShow(TvRequestViewModel tv)
         {
@@ -78,6 +82,71 @@ namespace Ombi.Core.Engine
                 }
             }
 
+            var isAdmin = Username.Equals("API", StringComparison.CurrentCultureIgnoreCase) ||
+                          await UserManager.IsInRoleAsync(user, OmbiRoles.PowerUser) ||
+                          await UserManager.IsInRoleAsync(user, OmbiRoles.Admin);
+            var canSelectQualityProfile = isAdmin || await UserManager.IsInRoleAsync(user, OmbiRoles.SelectQualityProfile);
+
+            if ((tv.RootFolderOverride.HasValue || tv.LanguageProfile.HasValue) && !isAdmin)
+            {
+                return new RequestEngineResult
+                {
+                    Result = false,
+                    ErrorCode = ErrorCode.NoPermissions,
+                    Message = "You do not have the correct permissions to change advanced Sonarr options!",
+                    ErrorMessage = "You do not have the correct permissions to change advanced Sonarr options!"
+                };
+            }
+
+            if (tv.QualityPathOverride.HasValue && !canSelectQualityProfile)
+            {
+                return new RequestEngineResult
+                {
+                    Result = false,
+                    ErrorCode = ErrorCode.NoPermissions,
+                    Message = "You do not have the correct permissions to select a quality profile!",
+                    ErrorMessage = "You do not have the correct permissions to select a quality profile!"
+                };
+            }
+
+            if (tv.QualityPathOverride.HasValue && tv.QualityPathOverride.Value < 0)
+            {
+                return new RequestEngineResult
+                {
+                    Result = false,
+                    ErrorCode = ErrorCode.NoPermissions,
+                    Message = "The selected Sonarr quality profile is invalid.",
+                    ErrorMessage = "The selected Sonarr quality profile is invalid."
+                };
+            }
+
+            if (tv.QualityPathOverride.GetValueOrDefault() > 0 && !isAdmin)
+            {
+                try
+                {
+                    if (!await _qualityProfileSelectionService.IsValidSonarrProfile(tv.QualityPathOverride.Value))
+                    {
+                        return new RequestEngineResult
+                        {
+                            Result = false,
+                            ErrorCode = ErrorCode.NoPermissions,
+                            Message = "The selected Sonarr quality profile is no longer available.",
+                            ErrorMessage = "The selected Sonarr quality profile is no longer available."
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not validate selected Sonarr quality profile {ProfileId}", tv.QualityPathOverride.Value);
+                    return new RequestEngineResult
+                    {
+                        Result = false,
+                        Message = "Ombi could not validate the selected Sonarr quality profile because Sonarr is unavailable.",
+                        ErrorMessage = "Ombi could not validate the selected Sonarr quality profile because Sonarr is unavailable."
+                    };
+                }
+            }
+
             var tvBuilder = new TvShowRequestBuilder(TvApi, MovieDbApi, _logger);
             (await tvBuilder
                 .GetShowInfo(tv.TvDbId))
@@ -85,6 +154,7 @@ namespace Ombi.Core.Engine
                 .CreateChild(tv, canRequestOnBehalf ? tv.RequestOnBehalf : user.Id);
 
             await tvBuilder.BuildEpisodes(tv);
+            tvBuilder.ChildRequest.QualityOverride = tv.QualityPathOverride;
 
             var ruleResults = await RunRequestRules(tvBuilder.ChildRequest);
             var results = ruleResults as RuleResult[] ?? ruleResults.ToArray();
@@ -151,11 +221,14 @@ namespace Ombi.Core.Engine
                         ErrorMessage = "This has already been requested"
                     };
                 }
-                return await AddExistingRequest(tvBuilder.ChildRequest, existingRequest, tv.RequestOnBehalf, tv.RootFolderOverride.GetValueOrDefault(), tv.QualityPathOverride.GetValueOrDefault());
+                return await AddExistingRequest(tvBuilder.ChildRequest, existingRequest, tv.RequestOnBehalf, tv.RootFolderOverride.GetValueOrDefault(), tv.QualityPathOverride);
             }
 
-            // This is a new request
+            // This is a new request. Preserve the legacy API's request-time overrides too.
             var newRequest = tvBuilder.CreateNewRequest(tv);
+            newRequest.NewRequest.RootFolder = tv.RootFolderOverride;
+            newRequest.NewRequest.QualityOverride = tv.QualityPathOverride;
+            newRequest.NewRequest.LanguageProfile = tv.LanguageProfile;
             return await AddRequest(newRequest.NewRequest, tv.RequestOnBehalf);
         }
 
@@ -176,15 +249,66 @@ namespace Ombi.Core.Engine
                 };
             }
 
-            if ((tv.RootFolderOverride.HasValue || tv.QualityPathOverride.HasValue || tv.LanguageProfile.HasValue) && !isAdmin)
+            var canSelectQualityProfile = isAdmin || await UserManager.IsInRoleAsync(user, OmbiRoles.SelectQualityProfile);
+
+            if ((tv.RootFolderOverride.HasValue || tv.LanguageProfile.HasValue) && !isAdmin)
             {
                 return new RequestEngineResult
                 {
                     Result = false,
                     ErrorCode = ErrorCode.NoPermissions,
-                    Message = "You do not have the correct permissions!",
-                    ErrorMessage = $"You do not have the correct permissions!"
+                    Message = "You do not have the correct permissions to change advanced Sonarr options!",
+                    ErrorMessage = "You do not have the correct permissions to change advanced Sonarr options!"
                 };
+            }
+
+            if (tv.QualityPathOverride.HasValue && !canSelectQualityProfile)
+            {
+                return new RequestEngineResult
+                {
+                    Result = false,
+                    ErrorCode = ErrorCode.NoPermissions,
+                    Message = "You do not have the correct permissions to select a quality profile!",
+                    ErrorMessage = "You do not have the correct permissions to select a quality profile!"
+                };
+            }
+
+            if (tv.QualityPathOverride.HasValue && tv.QualityPathOverride.Value < 0)
+            {
+                return new RequestEngineResult
+                {
+                    Result = false,
+                    ErrorCode = ErrorCode.NoPermissions,
+                    Message = "The selected Sonarr quality profile is invalid.",
+                    ErrorMessage = "The selected Sonarr quality profile is invalid."
+                };
+            }
+
+            if (tv.QualityPathOverride.GetValueOrDefault() > 0 && !isAdmin)
+            {
+                try
+                {
+                    if (!await _qualityProfileSelectionService.IsValidSonarrProfile(tv.QualityPathOverride.Value))
+                    {
+                        return new RequestEngineResult
+                        {
+                            Result = false,
+                            ErrorCode = ErrorCode.NoPermissions,
+                            Message = "The selected Sonarr quality profile is no longer available.",
+                            ErrorMessage = "The selected Sonarr quality profile is no longer available."
+                        };
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not validate selected Sonarr quality profile {ProfileId}", tv.QualityPathOverride.Value);
+                    return new RequestEngineResult
+                    {
+                        Result = false,
+                        Message = "Ombi could not validate the selected Sonarr quality profile because Sonarr is unavailable.",
+                        ErrorMessage = "Ombi could not validate the selected Sonarr quality profile because Sonarr is unavailable."
+                    };
+                }
             }
 
             var tvBuilder = new TvShowRequestBuilderV2(MovieDbApi);
@@ -194,6 +318,7 @@ namespace Ombi.Core.Engine
                 .CreateChild(tv, canRequestOnBehalf ? tv.RequestOnBehalf : user.Id, tv.Source);
 
             await tvBuilder.BuildEpisodes(tv);
+            tvBuilder.ChildRequest.QualityOverride = tv.QualityPathOverride;
 
             var ruleResults = await RunRequestRules(tvBuilder.ChildRequest);
             var results = ruleResults as RuleResult[] ?? ruleResults.ToArray();
@@ -260,7 +385,7 @@ namespace Ombi.Core.Engine
                         ErrorMessage = "This has already been requested"
                     };
                 }
-                return await AddExistingRequest(tvBuilder.ChildRequest, existingRequest, tv.RequestOnBehalf, tv.RootFolderOverride.GetValueOrDefault(), tv.QualityPathOverride.GetValueOrDefault());
+                return await AddExistingRequest(tvBuilder.ChildRequest, existingRequest, tv.RequestOnBehalf, tv.RootFolderOverride.GetValueOrDefault(), tv.QualityPathOverride);
             }
 
             // This is a new request
@@ -976,13 +1101,15 @@ namespace Ombi.Core.Engine
             return result;
         }
 
-        private async Task<RequestEngineResult> AddExistingRequest(ChildRequests newRequest, TvRequests existingRequest, string requestOnBehalf, int rootFolder, int qualityProfile)
+        private async Task<RequestEngineResult> AddExistingRequest(ChildRequests newRequest, TvRequests existingRequest, string requestOnBehalf, int rootFolder, int? qualityProfile)
         {
             // Add the child
             existingRequest.ChildRequests.Add(newRequest);
-            if (qualityProfile > 0)
+            if (qualityProfile.HasValue)
             {
-                existingRequest.QualityOverride = qualityProfile;
+                // Zero explicitly clears a previous request-level override and restores the
+                // normal Ombi/Sonarr profile behavior for future processing.
+                existingRequest.QualityOverride = qualityProfile.Value;
             }
             if (rootFolder > 0)
             {
