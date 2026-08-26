@@ -1,3 +1,7 @@
+## [4.60.29](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.28...v4.60.29) (2026-08-26)
+
+
+
 ## [4.60.28](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.60.25...v4.60.28) (2026-08-24)
 
 
@@ -540,15 +544,6 @@
 
 * **build:** silence remaining esbuild/sass warnings and remove unused imports ([1915b09](https://github.com/ExtremeFiretop/Ombi-Fix/commit/1915b09e557128d43d70cdecb87f38277497bacb))
 * **tmdb:** Fix rendering of the movie db page ([a0b84f7](https://github.com/ExtremeFiretop/Ombi-Fix/commit/a0b84f74620f7e0b8c33a03fa3cc5f7d6d42ab93))
-
-
-
-## [4.55.4](https://github.com/ExtremeFiretop/Ombi-Fix/compare/v4.55.3...v4.55.4) (2026-02-20)
-
-
-### Bug Fixes
-
-* **emby/jellyfin:** fix [#5338](https://github.com/ExtremeFiretop/Ombi-Fix/issues/5338) ([6217461](https://github.com/ExtremeFiretop/Ombi-Fix/commit/62174617bbef0839527c179909cdbe50e90f5955))
 
 
 
