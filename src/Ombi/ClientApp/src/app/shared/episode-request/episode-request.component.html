@@ -62,8 +62,10 @@
 				<div class="row" *ngFor="let ep of season.episodes">
 					<div class="col-1">
 						<div *ngIf="!ep.available && !ep.requested && !ep.approved">
-							<mat-checkbox *ngIf="!ep.selected" [ngModel]="ep.selected" (click)="addRequest(ep)"></mat-checkbox>
-							<mat-checkbox *ngIf="ep.selected" [ngModel]="ep.selected" (click)="removeRequest(ep)"></mat-checkbox>
+							<mat-checkbox
+								[checked]="ep.selected"
+								(change)="episodeChanged($event, ep)"
+							></mat-checkbox>
 						</div>
 					</div>
 					<div class="col-1">

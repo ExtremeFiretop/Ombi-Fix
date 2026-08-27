@@ -125,6 +125,10 @@ export class EpisodeRequestComponent {
         episode.selected = false;
     }
 
+    public episodeChanged(checkbox: MatCheckboxChange, episode: IEpisodesRequests) {
+        episode.selected = checkbox.checked;
+    }
+
     public seasonChanged(checkbox: MatCheckboxChange, season: INewSeasonRequests) {
         season.episodes.forEach((ep) => {
             if (checkbox.checked && (!ep.available && !ep.requested && !ep.approved)) {

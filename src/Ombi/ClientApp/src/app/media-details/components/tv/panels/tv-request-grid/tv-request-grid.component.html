@@ -123,7 +123,8 @@
 					<mat-checkbox
 						*ngIf="!isEpisodeDisabled(ep)"
 						[checked]="selection.isSelected(ep)"
-						(click)="$event.stopPropagation(); selection.toggle(ep)"
+						(click)="$event.stopPropagation()"
+						(change)="setEpisodeSelected(ep, $event.checked)"
 						[tabIndex]="-1"
 						aria-hidden="true"
 						color="accent"

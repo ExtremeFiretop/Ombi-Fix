@@ -111,6 +111,18 @@ export class TvRequestGridComponent {
         return ep.available || ep.requested || ep.approved || ep.denied;
     }
 
+    public setEpisodeSelected(ep: IEpisodesRequests, checked: boolean): void {
+        if (this.isEpisodeDisabled(ep)) {
+            return;
+        }
+
+        if (checked) {
+            this.selection.select(ep);
+        } else {
+            this.selection.deselect(ep);
+        }
+    }
+
     public getEpisodeStatusKey(ep: IEpisodesRequests): string {
         if (ep.available) return "available";
         if (ep.denied) return "denied";
