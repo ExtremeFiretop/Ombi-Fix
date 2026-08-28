@@ -30,14 +30,14 @@ export interface QualityProfileRequestDialogData {
     template: `
         <h2 mat-dialog-title>Quality Profile</h2>
         <mat-dialog-content>
-            <p class="quality-profile-help">Choose the quality profile for this request. For an existing Sonarr series, selecting a profile applies it to the whole series.</p>
+            <p class="quality-profile-help">Choose the profile for this request. For an existing TV series, selecting a profile applies it to the whole series.</p>
 
             <div class="quality-profile-loading" *ngIf="loading">
                 <mat-spinner diameter="32"></mat-spinner>
             </div>
 
             <mat-form-field appearance="fill" class="quality-profile-field" *ngIf="!loading">
-                <mat-label>Quality Profile</mat-label>
+                <mat-label>Profile</mat-label>
                 <mat-select [(ngModel)]="selectedProfileId">
                     <mat-option [value]="0">Use existing / configured default</mat-option>
                     <mat-option *ngFor="let profile of profiles" [value]="profile.id">
