@@ -212,7 +212,8 @@ namespace Ombi.Core.Engine
                         RequestedBy = GetRequesterDisplayName(movie.RequestedUser, movie.RequestedByAlias, permissions.CanManage),
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
-                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
+                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
+                            && (!settings.RestrictNominationsToOwnRequests || owned),
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -245,6 +246,7 @@ namespace Ombi.Core.Engine
                     active.TryGetValue((RequestType.TvShow, tv.Id), out var cleanup);
                     var owners = tv.ChildRequests.Select(x => x.RequestedUserId).Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
                     var owned = owners.Count == 1 && owners[0] == user.Id;
+                    var requestedByCurrentUser = owners.Contains(user.Id);
                     var availableSince = tv.ChildRequests
                         .Select(x => x.MarkedAsAvailable ?? (x.RequestedDate == default ? (DateTime?)null : x.RequestedDate))
                         .Where(x => x.HasValue)
@@ -279,7 +281,8 @@ namespace Ombi.Core.Engine
                         RequestedBy = requestedBy.Count == 1 ? requestedBy[0] : requestedBy.Count > 1 ? "Multiple users" : string.Empty,
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
-                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
+                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
+                            && (!settings.RestrictNominationsToOwnRequests || requestedByCurrentUser),
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -352,6 +355,7 @@ namespace Ombi.Core.Engine
                         .Distinct()
                         .ToList();
                     var owned = owners.Count == 1 && owners[0] == user.Id;
+                    var requestedByCurrentUser = owners.Contains(user.Id);
                     var ageEligible = IsAgeEligible(record.AvailableSince, settings.MinimumMediaAgeDays, now);
                     var requestedBy = owners
                         .Where(residualOwners.ContainsKey)
@@ -383,7 +387,8 @@ namespace Ombi.Core.Engine
                         RequestedBy = requestedBy.Count == 1 ? requestedBy[0] : requestedBy.Count > 1 ? "Multiple users" : string.Empty,
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
-                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote,
+                        CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
+                            && (!settings.RestrictNominationsToOwnRequests || requestedByCurrentUser),
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -636,6 +641,12 @@ namespace Ombi.Core.Engine
                 if (target == null || !target.Available)
                 {
                     return Fail("The available Ombi request could not be found.");
+                }
+
+                if (settings.RestrictNominationsToOwnRequests
+                    && (target.OwnerUserIds == null || !target.OwnerUserIds.Contains(user.Id)))
+                {
+                    return Fail("You can only nominate media that you requested.");
                 }
 
                 if (!IsAgeEligible(target.AvailableSince, settings.MinimumMediaAgeDays, DateTime.UtcNow))

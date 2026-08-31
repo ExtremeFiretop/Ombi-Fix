@@ -42,6 +42,7 @@ export interface IMediaCleanupSettings extends ISettings {
     gracePeriodDays: number;
     minimumMediaAgeDays: number;
     requesterCanVeto: boolean;
+    restrictNominationsToOwnRequests: boolean;
     deleteFiles: boolean;
     addImportExclusion: boolean;
     notifyManagersOnPendingApproval: boolean;

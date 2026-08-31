@@ -47,6 +47,7 @@ export class MediaCleanupSettingsComponent implements OnInit {
                 gracePeriodDays: [settings.gracePeriodDays, [Validators.required, Validators.min(0)]],
                 minimumMediaAgeDays: [settings.minimumMediaAgeDays, [Validators.required, Validators.min(0)]],
                 requesterCanVeto: [settings.requesterCanVeto],
+                restrictNominationsToOwnRequests: [settings.restrictNominationsToOwnRequests],
                 deleteFiles: [settings.deleteFiles],
                 addImportExclusion: [settings.addImportExclusion],
                 notifyManagersOnPendingApproval: [settings.notifyManagersOnPendingApproval],

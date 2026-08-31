@@ -15,6 +15,7 @@ namespace Ombi.Settings.Settings.Models
         public int GracePeriodDays { get; set; } = 3;
         public int MinimumMediaAgeDays { get; set; } = 30;
         public bool RequesterCanVeto { get; set; } = true;
+        public bool RestrictNominationsToOwnRequests { get; set; } = false;
         public bool DeleteFiles { get; set; } = true;
         public bool AddImportExclusion { get; set; }
         public bool NotifyManagersOnPendingApproval { get; set; } = true;
