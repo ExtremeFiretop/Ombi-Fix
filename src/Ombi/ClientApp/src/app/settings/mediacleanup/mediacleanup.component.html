@@ -62,7 +62,7 @@
                     Only allow users to nominate media they requested
                 </mat-slide-toggle>
                 <p class="help-text" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
-                    When enabled, users can start a community cleanup vote only for movies they requested or TV series where they requested at least one part of the series. They can still vote on nominations started by other users.
+                    When enabled, users can start a community cleanup vote only for movies they requested or TV series where they requested at least one part of the series. Administrators, Power Users, and users with ManageMediaCleanup can still nominate any eligible media. Users can still vote on nominations started by other users.
                 </p>
 
                 <mat-slide-toggle formControlName="requesterCanVeto" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">

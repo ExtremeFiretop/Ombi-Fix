@@ -213,7 +213,7 @@ namespace Ombi.Core.Engine
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
-                            && (!settings.RestrictNominationsToOwnRequests || owned),
+                            && (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || owned),
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -282,7 +282,7 @@ namespace Ombi.Core.Engine
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
-                            && (!settings.RestrictNominationsToOwnRequests || requestedByCurrentUser),
+                            && (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || requestedByCurrentUser),
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -388,7 +388,7 @@ namespace Ombi.Core.Engine
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
-                            && (!settings.RestrictNominationsToOwnRequests || requestedByCurrentUser),
+                            && (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || requestedByCurrentUser),
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -644,6 +644,7 @@ namespace Ombi.Core.Engine
                 }
 
                 if (settings.RestrictNominationsToOwnRequests
+                    && !permissions.CanManage
                     && (target.OwnerUserIds == null || !target.OwnerUserIds.Contains(user.Id)))
                 {
                     return Fail("You can only nominate media that you requested.");
