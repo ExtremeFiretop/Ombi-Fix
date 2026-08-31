@@ -86,6 +86,10 @@
     overflow: hidden;
 }
 
+.cleanup-card.no-poster {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .poster-wrap {
     min-height: 168px;
     background: rgba(127, 127, 127, .12);
@@ -258,6 +262,10 @@
     flex: 0 0 min(430px, calc(100vw - 4.5rem));
     scroll-snap-align: start;
     overflow: hidden;
+}
+
+.attention-card.no-poster {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .attention-card mat-card-content {

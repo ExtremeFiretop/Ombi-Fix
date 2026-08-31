@@ -90,6 +90,7 @@
                 <div class="attention-track" #voteQueue>
                     <mat-card class="attention-card vote-card"
                               *ngFor="let item of activeVoteItems"
+                              [class.no-poster]="!posterUrl(item.posterPath)"
                               [class.vote-card-pending]="!hasVoted(item)"
                               [class.vote-card-voted]="hasVoted(item)">
                         <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
@@ -149,7 +150,9 @@
                     </div>
                 </div>
                 <div class="attention-track" #approvalQueue>
-                    <mat-card class="attention-card approval-card" *ngFor="let item of pendingApprovalItems">
+                    <mat-card class="attention-card approval-card"
+                              *ngFor="let item of pendingApprovalItems"
+                              [class.no-poster]="!posterUrl(item.posterPath)">
                         <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
                         <mat-card-content>
                             <span class="attention-label"><mat-icon>approval</mat-icon> Approval required</span>
@@ -188,7 +191,9 @@
                     </div>
                 </div>
                 <div class="attention-track" #scheduledQueue>
-                    <mat-card class="attention-card scheduled-card" *ngFor="let item of scheduledRemovalItems">
+                    <mat-card class="attention-card scheduled-card"
+                              *ngFor="let item of scheduledRemovalItems"
+                              [class.no-poster]="!posterUrl(item.posterPath)">
                         <img *ngIf="posterUrl(item.posterPath)" class="attention-poster" [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
                         <mat-card-content>
                             <span class="attention-label grace-label"><mat-icon>schedule</mat-icon> Grace period</span>
@@ -263,7 +268,9 @@
         </div>
 
         <div class="cleanup-grid">
-            <mat-card class="cleanup-card" *ngFor="let item of filteredItems">
+            <mat-card class="cleanup-card"
+                      *ngFor="let item of filteredItems"
+                      [class.no-poster]="!posterUrl(item.posterPath)">
                 <div class="poster-wrap" *ngIf="posterUrl(item.posterPath)">
                     <img [src]="posterUrl(item.posterPath)" [alt]="item.title" loading="lazy" />
                 </div>
