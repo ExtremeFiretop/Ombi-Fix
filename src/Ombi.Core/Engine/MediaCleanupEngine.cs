@@ -1903,7 +1903,9 @@ namespace Ombi.Core.Engine
             var deleteVotes = record.Votes.Count(x => x.Vote == MediaCleanupVoteType.Delete);
             var requesterVeto = settings.RequesterCanVeto && record.Votes.Any(x =>
                 x.Vote == MediaCleanupVoteType.Keep && record.OwnerUserIds.Contains(x.UserId));
+            var anyKeepVoteVeto = settings.AnyKeepVotePreventsRemoval && keepVotes > 0;
             var thresholdMet = !requesterVeto &&
+                               !anyKeepVoteVeto &&
                                deleteVotes >= Math.Max(1, settings.MinimumDeleteVotes) &&
                                deleteVotes - keepVotes >= Math.Max(0, settings.RequiredVoteMargin);
 

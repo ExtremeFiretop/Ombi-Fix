@@ -14,6 +14,7 @@ namespace Ombi.Settings.Settings.Models
         public int VotingPeriodDays { get; set; } = 7;
         public int GracePeriodDays { get; set; } = 3;
         public int MinimumMediaAgeDays { get; set; } = 30;
+        public bool AnyKeepVotePreventsRemoval { get; set; } = false;
         public bool RequesterCanVeto { get; set; } = true;
         public bool RestrictNominationsToOwnRequests { get; set; } = false;
         public bool DeleteFiles { get; set; } = true;

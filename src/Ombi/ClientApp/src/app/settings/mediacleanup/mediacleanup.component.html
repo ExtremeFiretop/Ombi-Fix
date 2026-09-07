@@ -37,11 +37,11 @@
 
                 <div class="number-grid" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
                     <mat-form-field appearance="fill">
-                        <mat-label>Minimum delete votes</mat-label>
+                        <mat-label>Minimum Remove votes</mat-label>
                         <input matInput type="number" min="1" formControlName="minimumDeleteVotes" />
                     </mat-form-field>
                     <mat-form-field appearance="fill">
-                        <mat-label>Required vote margin</mat-label>
+                        <mat-label>Required Remove vote lead</mat-label>
                         <input matInput type="number" min="0" formControlName="requiredVoteMargin" />
                     </mat-form-field>
                     <mat-form-field appearance="fill">
@@ -57,6 +57,16 @@
                         <input matInput type="number" min="0" formControlName="minimumMediaAgeDays" />
                     </mat-form-field>
                 </div>
+                <p class="help-text" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
+                    After voting ends, Remove votes must meet the minimum and lead Keep votes by at least the configured amount. For example, a required lead of 1 means 6 Remove / 5 Keep passes; it does not mean one Keep vote blocks removal.
+                </p>
+
+                <mat-slide-toggle formControlName="anyKeepVotePreventsRemoval" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
+                    Any Keep vote prevents removal
+                </mat-slide-toggle>
+                <p class="help-text" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
+                    When enabled, one or more Keep votes makes the community cleanup vote fail regardless of how many Remove votes were cast. The minimum Remove vote requirement still applies when there are no Keep votes.
+                </p>
 
                 <mat-slide-toggle formControlName="restrictNominationsToOwnRequests" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
                     Only allow users to nominate media they requested
@@ -66,8 +76,11 @@
                 </p>
 
                 <mat-slide-toggle formControlName="requesterCanVeto" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
-                    Original requester can veto with a Keep vote
+                    Original requester Keep vote always vetoes removal
                 </mat-slide-toggle>
+                <p class="help-text" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
+                    When enabled, a Keep vote from any original requester blocks removal even if other Keep votes would not. This is redundant when “Any Keep vote prevents removal” is enabled.
+                </p>
             </section>
 
             <section class="settings-section">
