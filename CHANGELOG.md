@@ -1,3 +1,7 @@
+## [4.60.35](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.60.34...v4.60.35) (2026-09-11)
+
+
+
 ## [4.60.34](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.60.33...v4.60.34) (2026-09-07)
 
 
@@ -482,10 +486,6 @@
 ### Bug Fixes
 
 * issue deletion failing due to foreign key constraint on IssueComments ([#5393](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/issues/5393)) ([bfd4166](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/commit/bfd4166578df3589a31b624644f35a74750095ce))
-
-
-
-## [4.58.2](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.58.1...v4.58.2) (2026-04-07)
 
 
 
