@@ -25,6 +25,8 @@ namespace Ombi.Core.Models.MediaCleanup
         public DateTime? ReleaseDate { get; set; }
         public string RequestedBy { get; set; }
         public bool OwnedByCurrentUser { get; set; }
+        public bool IsCleanupSteward { get; set; }
+        public DateTime? StewardshipSince { get; set; }
         public bool CanRequestOwnRemoval { get; set; }
         public bool CanNominate { get; set; }
         public bool CanVote { get; set; }

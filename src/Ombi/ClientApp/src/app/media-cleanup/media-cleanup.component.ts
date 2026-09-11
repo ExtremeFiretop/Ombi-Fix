@@ -60,7 +60,7 @@ export class MediaCleanupComponent implements OnInit {
     private readonly expandedVoterKeys = new Set<string>();
     private metricsSubscription?: Subscription;
     private lastPlayedSubscription?: Subscription;
-    public viewMode: "all" | "mine" = "mine";
+    public viewMode: "all" | "mine" | "stewardship" = "mine";
     public mediaTypeMode: "all" | "movie" | "tv" = "all";
     public sortMode: "default" | "size" | "availableSince" | "lastPlayed" | "title" = "default";
     public sortDirection: "asc" | "desc" = "asc";
@@ -86,6 +86,7 @@ export class MediaCleanupComponent implements OnInit {
         this.cleanupService.getOverview().subscribe({
             next: x => {
                 this.overview = x;
+                this.ensureValidViewMode();
                 this.loading = false;
                 this.loadSupplementalData();
             },
@@ -253,7 +254,7 @@ export class MediaCleanupComponent implements OnInit {
     }
 
     public get showSortControl(): boolean {
-        return (this.overview?.items?.length ?? 0) > 1;
+        return this.scopeItems.length > 1;
     }
 
     public onSortModeChanged(): void {
@@ -304,6 +305,10 @@ export class MediaCleanupComponent implements OnInit {
         return this.overview?.items?.filter(x => x.ownedByCurrentUser).length ?? 0;
     }
 
+    public get stewardshipMediaCount(): number {
+        return this.overview?.items?.filter(x => x.isCleanupSteward).length ?? 0;
+    }
+
     public get scopedMediaCount(): number {
         return this.scopeItems.length;
     }
@@ -317,20 +322,26 @@ export class MediaCleanupComponent implements OnInit {
     }
 
     public get showMediaTypeToggle(): boolean {
-        if (!this.overview) {
-            return false;
-        }
-        const hasMovies = this.overview.items.some(x => x.requestType === RequestType.movie);
-        const hasTv = this.overview.items.some(x => x.requestType === RequestType.tvShow);
+        const items = this.scopeItems;
+        const hasMovies = items.some(x => x.requestType === RequestType.movie);
+        const hasTv = items.some(x => x.requestType === RequestType.tvShow);
         return hasMovies && hasTv;
     }
 
-    public get showViewToggle(): boolean {
+    public get showMyMediaView(): boolean {
         return !!this.overview &&
             this.overview.settings.ownRequestRemoval !== OwnRequestRemovalMode.Off &&
             this.overview.settings.communityCleanup !== CommunityCleanupMode.Off &&
             this.overview.canRequestRemoval &&
             this.overview.canVote;
+    }
+
+    public get showStewardshipView(): boolean {
+        return this.stewardshipMediaCount > 0;
+    }
+
+    public get showViewToggle(): boolean {
+        return this.showMyMediaView || this.showStewardshipView;
     }
 
     public requestOwnRemoval(item: IMediaCleanupItem): void {
@@ -524,12 +535,33 @@ export class MediaCleanupComponent implements OnInit {
             return [];
         }
 
-        // My Media is the default only when the ownership toggle is actually available.
-        // Users whose permissions/settings hide that toggle must not be silently trapped
+        if (this.viewMode === "stewardship" && this.showStewardshipView) {
+            return this.overview.items.filter(x => x.isCleanupSteward);
+        }
+
+        // My Media remains the default where the original ownership view is available.
+        // Users whose permissions/settings hide that view must not be silently trapped
         // in a hidden My Media filter.
-        return this.showViewToggle && this.viewMode === "mine"
-            ? this.overview.items.filter(x => x.ownedByCurrentUser)
-            : this.overview.items;
+        if (this.viewMode === "mine" && this.showMyMediaView) {
+            return this.overview.items.filter(x => x.ownedByCurrentUser);
+        }
+
+        return this.overview.items;
+    }
+
+    private ensureValidViewMode(): void {
+        if (!this.overview) {
+            return;
+        }
+
+        if (this.viewMode === "mine" && !this.showMyMediaView) {
+            this.viewMode = this.showStewardshipView ? "stewardship" : "all";
+            return;
+        }
+
+        if (this.viewMode === "stewardship" && !this.showStewardshipView) {
+            this.viewMode = this.showMyMediaView ? "mine" : "all";
+        }
     }
 
     private sortItems(items: IMediaCleanupItem[]): IMediaCleanupItem[] {
@@ -664,6 +696,7 @@ export class MediaCleanupComponent implements OnInit {
                     }
 
                     this.overview = { ...this.overview, items };
+                    this.ensureValidViewMode();
                 }
 
                 if (refreshMetrics) {

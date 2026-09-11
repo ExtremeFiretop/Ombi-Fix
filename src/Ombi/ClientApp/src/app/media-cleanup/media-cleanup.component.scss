@@ -461,3 +461,55 @@
     flex: 0 0 17px;
     font-size: 17px;
 }
+
+.item-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .4rem;
+}
+
+.steward-chip {
+    display: inline-block;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: .2rem .55rem;
+    font-size: .75rem;
+    background: transparent;
+    opacity: .9;
+    white-space: nowrap;
+}
+
+.stewardship-explainer {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    margin: -.25rem 0 1.25rem;
+    padding: .85rem 1rem;
+    border: 1px solid rgba(127, 127, 127, .28);
+    border-radius: 10px;
+    background: rgba(127, 127, 127, .08);
+}
+
+.stewardship-explainer mat-icon {
+    flex: 0 0 auto;
+    margin-top: .05rem;
+}
+
+.stewardship-explainer p {
+    margin: .2rem 0 0;
+    opacity: .78;
+}
+
+.stewardship-metadata {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+
+.stewardship-metadata mat-icon {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    font-size: 17px;
+}

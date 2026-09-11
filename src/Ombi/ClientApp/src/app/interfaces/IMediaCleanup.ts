@@ -69,6 +69,8 @@ export interface IMediaCleanupItem {
     releaseDate?: Date;
     requestedBy: string;
     ownedByCurrentUser: boolean;
+    isCleanupSteward: boolean;
+    stewardshipSince?: Date;
     canRequestOwnRemoval: boolean;
     canNominate: boolean;
     canVote: boolean;

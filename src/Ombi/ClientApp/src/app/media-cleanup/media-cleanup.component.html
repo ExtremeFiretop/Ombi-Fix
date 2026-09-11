@@ -221,9 +221,10 @@
         </section>
 
         <div class="cleanup-toolbar" *ngIf="showViewToggle || showMediaTypeToggle || showSortControl">
-            <mat-button-toggle-group *ngIf="showViewToggle" [(value)]="viewMode" aria-label="Media cleanup ownership view">
+            <mat-button-toggle-group *ngIf="showViewToggle" [(value)]="viewMode" aria-label="Media cleanup view">
                 <mat-button-toggle value="all">All Media ({{ overview.items.length }})</mat-button-toggle>
-                <mat-button-toggle value="mine">My Media ({{ myMediaCount }})</mat-button-toggle>
+                <mat-button-toggle *ngIf="showMyMediaView" value="mine">My Media ({{ myMediaCount }})</mat-button-toggle>
+                <mat-button-toggle *ngIf="showStewardshipView" value="stewardship">My Stewardship ({{ stewardshipMediaCount }})</mat-button-toggle>
             </mat-button-toggle-group>
 
             <mat-button-toggle-group *ngIf="showMediaTypeToggle" [(value)]="mediaTypeMode" aria-label="Media cleanup type filter">
@@ -259,6 +260,14 @@
             </div>
         </div>
 
+        <div class="stewardship-explainer" *ngIf="viewMode === 'stewardship' && showStewardshipView">
+            <mat-icon>verified_user</mat-icon>
+            <div>
+                <strong>My Stewardship</strong>
+                <p>These are titles you previously voted Keep in a finished community cleanup that left the media in place. You can nominate them again when you are finished with them.</p>
+            </div>
+        </div>
+
         <div *ngIf="overview.items.length === 0" class="empty-state">
             No available Ombi requests are currently eligible for cleanup.
         </div>
@@ -282,11 +291,18 @@
                                 {{ mediaTypeText(item.requestType) }}<span *ngIf="item.releaseDate"> · {{ item.releaseDate | date:'yyyy' }}</span> · {{ loadingMetrics && !item.sizeOnDisk ? 'Loading size…' : formatBytes(item.sizeOnDisk) }}
                             </span>
                         </div>
-                        <span class="owner-chip" *ngIf="item.ownedByCurrentUser">Your request</span>
+                        <div class="item-badges" *ngIf="item.ownedByCurrentUser || item.isCleanupSteward">
+                            <span class="owner-chip" *ngIf="item.ownedByCurrentUser">Your request</span>
+                            <span class="steward-chip" *ngIf="item.isCleanupSteward">Steward</span>
+                        </div>
                     </div>
 
                     <p class="media-overview media-overview-catalog" *ngIf="item.overview">{{ item.overview }}</p>
                     <p class="metadata" *ngIf="item.requestedBy">Requested by {{ item.requestedBy }}</p>
+                    <p class="metadata stewardship-metadata" *ngIf="item.isCleanupSteward">
+                        <mat-icon>verified_user</mat-icon>
+                        <span>Cleanup steward<ng-container *ngIf="item.stewardshipSince"> · latest Keep vote {{ item.stewardshipSince | date:'mediumDate' }}</ng-container></span>
+                    </p>
                     <p class="metadata" *ngIf="item.availableSince">Available since {{ item.availableSince | date:'mediumDate' }}</p>
                     <p class="metadata" *ngIf="item.lastPlayedKnown">
                         Last played {{ item.lastPlayedAt ? (item.lastPlayedAt | date:'medium') : 'Never' }}
