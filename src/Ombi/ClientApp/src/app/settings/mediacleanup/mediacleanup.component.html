@@ -69,10 +69,10 @@
                 </p>
 
                 <mat-slide-toggle formControlName="restrictNominationsToOwnRequests" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
-                    Only allow users to nominate media they requested
+                    Restrict cleanup nominations to requesters and Keep voters
                 </mat-slide-toggle>
                 <p class="help-text" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">
-                    When enabled, users can start a community cleanup vote only for movies they requested or TV series where they requested at least one part of the series. Administrators, Power Users, and users with ManageMediaCleanup can still nominate any eligible media. Users can still vote on nominations started by other users.
+                    When enabled, users can start a community cleanup vote for media they requested or media for which they have cleanup stewardship from a previous Keep vote in a community cleanup that ended with the media being kept. Voting Keep grants stewardship so the user can nominate the title later when they are finished with it; a later Delete vote in another kept cleanup gives that stewardship up. Administrators, Power Users, and users with ManageMediaCleanup can still nominate any eligible media. Users can still vote on nominations started by other users.
                 </p>
 
                 <mat-slide-toggle formControlName="requesterCanVeto" *ngIf="form.get('communityCleanup')?.value !== CommunityCleanupMode.Off">

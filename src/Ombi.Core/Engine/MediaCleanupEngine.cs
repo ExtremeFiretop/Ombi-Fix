@@ -187,6 +187,16 @@ namespace Ombi.Core.Engine
                     var availableSince = movie.MarkedAsAvailable ?? (movie.RequestedDate == default ? (DateTime?)null : movie.RequestedDate);
                     var owned = movie.RequestedUserId == user.Id;
                     var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
+                    var canNominateUnderRestriction = CanNominateUnderRestriction(
+                        settings,
+                        permissions,
+                        state,
+                        RequestType.Movie,
+                        movie.Id,
+                        movie.TheMovieDbId,
+                        0,
+                        user.Id,
+                        owned);
                     if (!CanSeeItem(cleanup, owned, settings, permissions, user.Id))
                     {
                         continue;
@@ -213,7 +223,7 @@ namespace Ombi.Core.Engine
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
-                            && (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || owned),
+                            && canNominateUnderRestriction,
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -253,6 +263,16 @@ namespace Ombi.Core.Engine
                         .OrderByDescending(x => x.Value)
                         .FirstOrDefault();
                     var ageEligible = IsAgeEligible(availableSince, settings.MinimumMediaAgeDays, now);
+                    var canNominateUnderRestriction = CanNominateUnderRestriction(
+                        settings,
+                        permissions,
+                        state,
+                        RequestType.TvShow,
+                        tv.Id,
+                        tv.ExternalProviderId,
+                        tv.TvDbId,
+                        user.Id,
+                        requestedByCurrentUser);
                     var requestedBy = tv.ChildRequests
                         .Select(x => GetRequesterDisplayName(x.RequestedUser, x.RequestedByAlias, permissions.CanManage))
                         .Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
@@ -282,7 +302,7 @@ namespace Ombi.Core.Engine
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
-                            && (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || requestedByCurrentUser),
+                            && canNominateUnderRestriction,
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -357,6 +377,16 @@ namespace Ombi.Core.Engine
                     var owned = owners.Count == 1 && owners[0] == user.Id;
                     var requestedByCurrentUser = owners.Contains(user.Id);
                     var ageEligible = IsAgeEligible(record.AvailableSince, settings.MinimumMediaAgeDays, now);
+                    var canNominateUnderRestriction = CanNominateUnderRestriction(
+                        settings,
+                        permissions,
+                        state,
+                        RequestType.TvShow,
+                        record.MediaRequestId,
+                        record.TheMovieDbId,
+                        record.TvDbId,
+                        user.Id,
+                        requestedByCurrentUser);
                     var requestedBy = owners
                         .Where(residualOwners.ContainsKey)
                         .Select(x => GetRequesterDisplayName(residualOwners[x], null, permissions.CanManage))
@@ -388,7 +418,7 @@ namespace Ombi.Core.Engine
                         OwnedByCurrentUser = owned,
                         CanRequestOwnRemoval = cleanup == null && owned && CanUseOwnRemoval(settings, permissions),
                         CanNominate = cleanup == null && ageEligible && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote
-                            && (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || requestedByCurrentUser),
+                            && canNominateUnderRestriction,
                         CanVote = cleanup != null && cleanup.Origin == MediaCleanupOrigin.Community && settings.CommunityCleanup != CommunityCleanupMode.Off && permissions.CanVote && IsVoteable(cleanup),
                         CanManage = cleanup != null && permissions.CanManage,
                         CanCancel = cleanup != null && (permissions.CanManage || cleanup.RequestedByUserId == user.Id),
@@ -643,11 +673,20 @@ namespace Ombi.Core.Engine
                     return Fail("The available Ombi request could not be found.");
                 }
 
-                if (settings.RestrictNominationsToOwnRequests
-                    && !permissions.CanManage
-                    && (target.OwnerUserIds == null || !target.OwnerUserIds.Contains(user.Id)))
+                var state = await LoadState();
+                var requestedByCurrentUser = target.OwnerUserIds?.Contains(user.Id) == true;
+                if (!CanNominateUnderRestriction(
+                        settings,
+                        permissions,
+                        state,
+                        target.RequestType,
+                        target.RequestId,
+                        target.TheMovieDbId,
+                        target.TvDbId,
+                        user.Id,
+                        requestedByCurrentUser))
                 {
-                    return Fail("You can only nominate media that you requested.");
+                    return Fail("You can only nominate media that you requested or currently have cleanup stewardship for from a previous Keep vote.");
                 }
 
                 if (!IsAgeEligible(target.AvailableSince, settings.MinimumMediaAgeDays, DateTime.UtcNow))
@@ -665,7 +704,6 @@ namespace Ombi.Core.Engine
                     return Fail("Specific TV episode cleanup requires Delete Files to be enabled in Media Cleanup settings. You can still nominate the entire series.");
                 }
 
-                var state = await LoadState();
                 var existing = FindActive(state, requestType, requestId);
                 if (existing != null)
                 {
@@ -2117,6 +2155,114 @@ namespace Ombi.Core.Engine
                 return false;
             }
             return settings.OwnRequestRemoval != OwnRequestRemovalMode.ImmediateDeletion || permissions.CanDeleteOwnMedia;
+        }
+
+        private static bool CanNominateUnderRestriction(
+            MediaCleanupSettings settings,
+            CleanupPermissions permissions,
+            MediaCleanupState state,
+            RequestType requestType,
+            int requestId,
+            int theMovieDbId,
+            int tvDbId,
+            string userId,
+            bool requestedByCurrentUser)
+        {
+            if (!settings.RestrictNominationsToOwnRequests || permissions.CanManage || requestedByCurrentUser)
+            {
+                return true;
+            }
+
+            return HasCleanupStewardship(state, requestType, requestId, theMovieDbId, tvDbId, userId);
+        }
+
+        /// <summary>
+        /// A Keep vote on a community cleanup that ultimately leaves the media in place grants
+        /// cleanup stewardship for that title. Stewardship is derived from persisted cleanup
+        /// history rather than stored separately, so existing/rejected cleanup votes immediately
+        /// participate after upgrading without a migration.
+        ///
+        /// The user's latest vote from a rejected cleanup is their current stewardship position:
+        /// Keep grants/retains stewardship; Delete gives it up. A later successful full-media
+        /// cleanup resets the old lifecycle so a future re-request of the same provider title does
+        /// not inherit stewardship from before it was deleted. Partial TV cleanups do not reset
+        /// series stewardship because the series still remains in the cleanup catalog.
+        /// </summary>
+        private static bool HasCleanupStewardship(
+            MediaCleanupState state,
+            RequestType requestType,
+            int requestId,
+            int theMovieDbId,
+            int tvDbId,
+            string userId)
+        {
+            if (state?.Requests == null || string.IsNullOrEmpty(userId))
+            {
+                return false;
+            }
+
+            var matchingHistory = state.Requests
+                .Where(x => x != null && IsSameCleanupMedia(x, requestType, requestId, theMovieDbId, tvDbId))
+                .ToList();
+
+            if (matchingHistory.Count == 0)
+            {
+                return false;
+            }
+
+            var lifecycleResetAt = matchingHistory
+                .Where(x => x.Status == MediaCleanupStatus.Completed && !IsPartialTvCleanup(x))
+                .Select(x => (DateTime?)(x.CompletedAt ?? x.ScheduledForDeletionAt ?? x.CreatedAt))
+                .OrderByDescending(x => x)
+                .FirstOrDefault();
+
+            var latestClosedVote = matchingHistory
+                .Where(x => x.Origin == MediaCleanupOrigin.Community && x.Status == MediaCleanupStatus.Rejected)
+                .SelectMany(x => (x.Votes ?? new List<MediaCleanupVoteRecord>())
+                    .Where(v => string.Equals(v.UserId, userId, StringComparison.Ordinal))
+                    .Select(v => new
+                    {
+                        Vote = v.Vote,
+                        Date = v.Date == default ? x.VotingEndsAt ?? x.CreatedAt : v.Date,
+                        RecordCreatedAt = x.CreatedAt
+                    }))
+                .Where(x => !lifecycleResetAt.HasValue || x.Date > lifecycleResetAt.Value)
+                .OrderByDescending(x => x.Date)
+                .ThenByDescending(x => x.RecordCreatedAt)
+                .FirstOrDefault();
+
+            return latestClosedVote?.Vote == MediaCleanupVoteType.Keep;
+        }
+
+        private static bool IsSameCleanupMedia(
+            MediaCleanupRecord record,
+            RequestType requestType,
+            int requestId,
+            int theMovieDbId,
+            int tvDbId)
+        {
+            if (record.RequestType != requestType)
+            {
+                return false;
+            }
+
+            if (requestId > 0 && record.MediaRequestId == requestId)
+            {
+                return true;
+            }
+
+            if (requestType == RequestType.Movie)
+            {
+                return theMovieDbId > 0 && record.TheMovieDbId == theMovieDbId;
+            }
+
+            if (requestType == RequestType.TvShow)
+            {
+                return (tvDbId > 0 && record.TvDbId == tvDbId) ||
+                       (theMovieDbId > 0 && record.TheMovieDbId == theMovieDbId);
+            }
+
+            return false;
         }
 
         private static bool CanSeeItem(MediaCleanupRecord cleanup, bool owned, MediaCleanupSettings settings, CleanupPermissions permissions, string userId)
