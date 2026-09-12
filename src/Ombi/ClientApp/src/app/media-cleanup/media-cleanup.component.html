@@ -4,7 +4,7 @@
             <h1>Media Cleanup</h1>
             <p>Remove media you requested or help decide what the community no longer needs.</p>
         </div>
-        <button mat-stroked-button type="button" (click)="load()" [disabled]="loading">
+        <button mat-stroked-button class="cleanup-refresh-button" type="button" (click)="load()" [disabled]="loading">
             <mat-icon>refresh</mat-icon> Refresh
         </button>
     </div>
@@ -221,13 +221,13 @@
         </section>
 
         <div class="cleanup-toolbar" *ngIf="showViewToggle || showMediaTypeToggle || showSortControl">
-            <mat-button-toggle-group *ngIf="showViewToggle" [(value)]="viewMode" aria-label="Media cleanup view">
+            <mat-button-toggle-group class="view-toggle-group" *ngIf="showViewToggle" [(value)]="viewMode" aria-label="Media cleanup view">
                 <mat-button-toggle value="all">All Media ({{ overview.items.length }})</mat-button-toggle>
                 <mat-button-toggle *ngIf="showMyMediaView" value="mine">My Media ({{ myMediaCount }})</mat-button-toggle>
                 <mat-button-toggle *ngIf="showStewardshipView" value="stewardship">My Stewardship ({{ stewardshipMediaCount }})</mat-button-toggle>
             </mat-button-toggle-group>
 
-            <mat-button-toggle-group *ngIf="showMediaTypeToggle" [(value)]="mediaTypeMode" aria-label="Media cleanup type filter">
+            <mat-button-toggle-group class="media-type-toggle-group" *ngIf="showMediaTypeToggle" [(value)]="mediaTypeMode" aria-label="Media cleanup type filter">
                 <mat-button-toggle value="all">All Types ({{ scopedMediaCount }})</mat-button-toggle>
                 <mat-button-toggle value="movie">Movies ({{ movieMediaCount }})</mat-button-toggle>
                 <mat-button-toggle value="tv">TV ({{ tvMediaCount }})</mat-button-toggle>
