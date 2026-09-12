@@ -1,3 +1,7 @@
+## [4.60.36](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.60.35...v4.60.36) (2026-09-11)
+
+
+
 ## [4.60.35](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.60.34...v4.60.35) (2026-09-11)
 
 
@@ -477,15 +481,6 @@
 ### Bug Fixes
 
 * restore TV details hero Request button behavior ([#5396](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/issues/5396)) ([0804e2b](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/commit/0804e2b8556e190f70b7d8f48dcdf9c9a49827c0))
-
-
-
-## [4.58.3](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.58.2...v4.58.3) (2026-04-08)
-
-
-### Bug Fixes
-
-* issue deletion failing due to foreign key constraint on IssueComments ([#5393](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/issues/5393)) ([bfd4166](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/commit/bfd4166578df3589a31b624644f35a74750095ce))
 
 
 
