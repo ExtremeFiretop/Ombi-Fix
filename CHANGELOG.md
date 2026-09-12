@@ -1,3 +1,7 @@
+## [4.60.37](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.60.36...v4.60.37) (2026-09-12)
+
+
+
 ## [4.60.36](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.60.35...v4.60.36) (2026-09-11)
 
 
@@ -472,15 +476,6 @@
 
 
 ## [4.58.5](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.58.4...v4.58.5) (2026-04-17)
-
-
-
-## [4.58.4](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/compare/v4.58.3...v4.58.4) (2026-04-17)
-
-
-### Bug Fixes
-
-* restore TV details hero Request button behavior ([#5396](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/issues/5396)) ([0804e2b](https://github.com/ExtremeFiretop/Ombi-MediaCleanup/commit/0804e2b8556e190f70b7d8f48dcdf9c9a49827c0))
 
 
 
